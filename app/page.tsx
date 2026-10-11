@@ -27,15 +27,9 @@ const IMG = {
 export default function Home() {
   return (
     <div className="auth-wrap">
-      <div style={{ maxWidth: 1160, width: "100%" }}>
-        <div
-          className="card"
-          style={{
-            padding: 34,
-            position: "relative",
-            overflow: "hidden",
-          }}
-        >
+      {/* .land = fluid wrapper (max-width grows on 2xl screens) */}
+      <div className="land">
+        <div className="card land-card">
           {/* TEXTURE BLOBS */}
           <div className="bg-blob bg-blob-1" />
           <div className="bg-blob bg-blob-2" />
@@ -43,14 +37,8 @@ export default function Home() {
 
           <div style={{ position: "relative", zIndex: 1 }}>
             {/* HEADER */}
-            <div
-              style={{
-                display: "flex",
-                justifyContent: "space-between",
-                alignItems: "center",
-                gap: 20,
-              }}
-            >
+            {/* wraps onto 2 lines on very small phones instead of overflowing */}
+            <div className="land-header">
               <div className="brand">
                 <Image
                   src="/assets/ayumarg-logo.png"
@@ -70,7 +58,7 @@ export default function Home() {
 
               {/* LOGGED OUT */}
               <Show when="signed-out">
-                <div style={{ display: "flex", gap: 10 }}>
+                <div className="land-actions">
                   <SignInButton mode="modal">
                     <button className="btn btn-secondary">Sign in</button>
                   </SignInButton>
@@ -91,16 +79,8 @@ export default function Home() {
             </div>
 
             {/* HERO */}
-            <div
-              style={{
-                display: "grid",
-                gridTemplateColumns: "1.1fr 0.9fr",
-                gap: 40,
-                alignItems: "center",
-                padding: "60px 0 55px",
-              }}
-              className="hero-grid"
-            >
+            {/* 1 column on phones, 2 columns from md (see .hero-grid in globals.css) */}
+            <div className="hero-grid">
               {/* LEFT: COPY */}
               <div>
                 <div className="eyebrow">
@@ -111,7 +91,7 @@ export default function Home() {
                 <h1
                   className="h1"
                   style={{
-                    fontSize: "clamp(38px, 5.4vw, 62px)",
+                    fontSize: "clamp(32px, 5.4vw, 62px)",
                     marginTop: 16,
                   }}
                 >
@@ -120,7 +100,7 @@ export default function Home() {
                   <span className="grad-text">Simple enough for everyone.</span>
                 </h1>
 
-                <p className="sub" style={{ fontSize: 17 }}>
+                <p className="sub">
                   A calm digital space for AyuMarg families to connect, manage
                   essential health information, and stay closer to the care that
                   matters — all in one warm, easy place.
@@ -231,16 +211,13 @@ export default function Home() {
               </div>
 
               {/* RIGHT: HERO PHOTO */}
-              <div
-                className="photo-card"
-                style={{ height: 430, position: "relative" }}
-              >
+              <div className="photo-card hero-photo">
                 <Image
                   src={IMG.hero}
                   alt="Calm AyuMarg partner clinic reception"
                   fill
                   priority
-                  sizes="(max-width: 900px) 100vw, 520px"
+                  sizes="(max-width: 767px) 100vw, 50vw"
                   style={{ objectFit: "cover" }}
                 />
 
@@ -316,7 +293,7 @@ export default function Home() {
                       src={c.image}
                       alt=""
                       fill
-                      sizes="(max-width: 700px) 100vw, 25vw"
+                      sizes="(max-width: 559px) 100vw, (max-width: 1023px) 50vw, 25vw"
                       style={{ objectFit: "cover", objectPosition: c.position }}
                     />
                     {c.badge && (

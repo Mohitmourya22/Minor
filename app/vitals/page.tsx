@@ -89,7 +89,7 @@ export default function Page() {
             {status === 'loading' && <LoadingState rows={4} />}
             {status === 'error' && <ErrorState message={error ?? 'Could not load your vitals.'} onRetry={reload} />}
             {status === 'success' && (vitals.length ? (
-              <div style={{ overflowX: 'auto' }}>
+              <div className="table-wrap">
                 <table className="table">
                   <thead>
                     <tr><th>Date</th><th>BP</th><th>HR</th><th>SpO₂</th></tr>
