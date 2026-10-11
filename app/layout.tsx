@@ -1,4 +1,4 @@
-import type { Metadata } from 'next'
+import type { Metadata, Viewport } from 'next'
 import { Inter } from 'next/font/google'
 import { ClerkProvider } from '@clerk/nextjs'
 import AuthTokenBridge from '../components/AuthTokenBridge'
@@ -17,6 +17,14 @@ export const metadata: Metadata = {
     siteName: 'AyuMarg',
     type: 'website',
   },
+}
+
+// Responsive viewport: device-width + notch-safe (viewport-fit=cover).
+// NOTE: zoom is intentionally NOT disabled (accessibility).
+export const viewport: Viewport = {
+  width: 'device-width',
+  initialScale: 1,
+  viewportFit: 'cover',
 }
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {

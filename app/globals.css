@@ -347,7 +347,7 @@ body::before {
   top: 72px;
   bottom: 0;
 
-  width: 240px;
+  width: var(--sidebar-w, 240px);
 
   padding: 24px 16px;
 
@@ -565,9 +565,9 @@ body::before {
 ========================================================= */
 
 .main {
-  margin-left: 240px;
+  margin-left: var(--sidebar-w, 240px);
 
-  width: calc(100% - 240px);
+  width: calc(100% - var(--sidebar-w, 240px));
 
   min-height: calc(100vh - 72px);
 
@@ -1178,14 +1178,6 @@ body::before {
 }
 
 /* =========================================================
-   MOBILE NAV
-========================================================= */
-
-.mobile-nav {
-  display: none;
-}
-
-/* =========================================================
    GLOSSY / TEXTURE ENHANCEMENTS
 ========================================================= */
 
@@ -1601,177 +1593,9 @@ body::before {
 }
 
 /* =========================================================
-   DESKTOP
+   (Old DESKTOP / TABLET / SMALL MOBILE blocks were merged into
+   the "RESPONSIVE LAYER" at the bottom of this file.)
 ========================================================= */
-
-@media (min-width: 901px) {
-  body {
-    overflow-x: hidden;
-  }
-
-  .main {
-    overflow: visible;
-  }
-}
-
-/* =========================================================
-   TABLET / MOBILE
-========================================================= */
-
-@media (max-width: 900px) {
-  .sidebar {
-    display: none;
-  }
-
-  .mobile-nav {
-    display: flex;
-
-    gap: 7px;
-
-    overflow-x: auto;
-
-    padding: 9px 14px;
-
-    background: var(--card);
-
-    border-bottom: 1px solid var(--line);
-
-    position: sticky;
-
-    top: 72px;
-
-    z-index: 45;
-
-    scrollbar-width: thin;
-  }
-
-  .mobile-nav-item {
-    flex: 0 0 auto;
-
-    display: inline-flex;
-
-    align-items: center;
-
-    gap: 7px;
-
-    padding: 9px 11px;
-
-    border-radius: 10px;
-
-    color: var(--muted);
-
-    font-size: 11px;
-
-    font-weight: 650;
-
-    white-space: nowrap;
-  }
-
-  .mobile-nav-item.active {
-    color: var(--primary);
-
-    background: var(--primary-soft);
-
-    font-weight: 800;
-  }
-
-  .main {
-    margin-left: 0;
-
-    width: 100%;
-
-    min-height: auto;
-
-    padding: 26px 18px 40px;
-
-    overflow: visible;
-  }
-
-  .main > * {
-    max-width: 100%;
-  }
-
-  .grid-2,
-  .grid-3,
-  .grid-4 {
-    grid-template-columns: 1fr;
-  }
-
-  .row {
-    grid-template-columns: 1fr;
-  }
-
-  .auth-card {
-    grid-template-columns: 1fr;
-  }
-
-  .auth-copy {
-    display: none;
-  }
-
-  .hero {
-    display: block;
-  }
-
-  .hero-grid {
-    grid-template-columns: 1fr !important;
-  }
-
-  .bg-blob {
-    display: none;
-  }
-
-  .hero .btn {
-    margin-top: 15px;
-  }
-
-  .health-status {
-    display: none;
-  }
-}
-
-/* =========================================================
-   SMALL MOBILE
-========================================================= */
-
-@media (max-width: 500px) {
-  .topbar {
-    height: 62px;
-
-    padding: 0 14px;
-  }
-
-  .mobile-nav {
-    top: 62px;
-  }
-
-  .pill {
-    display: none;
-  }
-
-  .theme-toggle {
-    width: 32px;
-    height: 32px;
-  }
-
-  .main {
-    padding: 22px 13px 35px;
-  }
-
-  .card {
-    padding: 18px;
-
-    border-radius: 17px;
-  }
-
-  .h1 {
-    font-size: 31px;
-  }
-
-  .sub {
-    font-size: 13px;
-  }
-}
 
 /* =========================================================
    GLASS + GLOW LAYER
@@ -2180,18 +2004,6 @@ html.dark {
   font: inherit;
 }
 
-@media (max-width: 1000px) {
-  .category-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-}
-
-@media (max-width: 560px) {
-  .category-grid { grid-template-columns: 1fr; }
-  .family-trigger-text small { display: none; }
-  .family-trigger-text { max-width: 80px; }
-  .topbar { padding: 0 14px; }
-  .brand-tag { display: none; }
-}
-
 /* text-only feature cards (Profile / Vitals Vault / Secure sign-in) */
 .feature-card {
   padding: 20px 18px 18px;
@@ -2204,4 +2016,690 @@ html.dark {
 }
 .second-opinion-card {
   transform: translateY(-12px);
+}
+
+/* =========================================================
+   RESPONSIVE LAYER  (mobile-first)
+   Breakpoints mirror Tailwind so they are easy to reason about:
+     sm 640 · md 768 · lg 1024 · xl 1280 · 2xl 1536
+   Base rules below = phones. Larger screens ENHANCE via min-width.
+   Sidebar (desktop) <-> hamburger drawer (mobile/tablet) switches at lg.
+========================================================= */
+
+/* ---------- 0. Foundations ---------- */
+
+html {
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+
+/* safety net: nothing may ever cause sideways page scroll
+   ("clip" (not "hidden") so position: sticky keeps working) */
+body {
+  overflow-x: clip;
+}
+
+img,
+video {
+  max-width: 100%;
+}
+
+/* 100dvh = real visible height on mobile browsers (URL bar aware) */
+@supports (min-height: 100dvh) {
+  body,
+  .shell,
+  .auth-wrap {
+    min-height: 100dvh;
+  }
+}
+
+/* ---------- 1. Fluid typography (scales smoothly, no overflow) ---------- */
+
+.h1 {
+  font-size: clamp(1.75rem, 1.1rem + 2.6vw, 2.625rem); /* 28px -> 42px */
+  overflow-wrap: anywhere;
+}
+
+.sub {
+  font-size: clamp(0.875rem, 0.82rem + 0.3vw, 1.0625rem); /* 14px -> 17px */
+}
+
+.table th {
+  font-size: 11px;
+}
+
+/* ---------- 2. Page shell: topbar + main ---------- */
+
+.topbar {
+  height: 62px;
+  gap: 8px;
+  /* env(): keep content clear of notches / rounded corners (viewport-fit=cover) */
+  padding: 0 max(14px, env(safe-area-inset-right)) 0 max(14px, env(safe-area-inset-left));
+}
+
+.topbar-left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.top-actions {
+  gap: 8px;
+  min-width: 0;
+}
+
+/* brand name has top priority in the topbar: it never shrinks or gets cut */
+.topbar .brand {
+  flex-shrink: 0;
+}
+
+.brand-name {
+  white-space: nowrap;
+}
+
+.topbar .brand-logo {
+  width: 40px;
+  height: 40px;
+}
+
+.brand-tag {
+  display: none; /* tagline only from sm up */
+}
+
+/* phones: main = full width, small gutters */
+.main {
+  margin-left: 0;
+  width: 100%;
+  min-height: auto;
+  padding: 22px max(14px, env(safe-area-inset-right)) 36px max(14px, env(safe-area-inset-left));
+  overflow: visible;
+}
+
+.main > * {
+  max-width: 100%;
+}
+
+.sidebar {
+  display: none; /* replaced by the drawer below lg */
+}
+
+/* hide purely decorative / secondary chrome on small screens */
+.pill,
+.health-status,
+.bg-blob {
+  display: none;
+}
+
+.family-trigger-text small {
+  display: none;
+}
+
+.family-trigger-text {
+  display: none; /* tiny phones: icon + chevron only (name shows in the menu / page) */
+  max-width: 72px;
+}
+
+/* theme toggle lives in the drawer on tiny phones to free topbar space */
+.topbar .theme-toggle {
+  display: none;
+}
+
+.drawer-theme {
+  width: 100%;
+}
+
+@media (min-width: 480px) {
+  .family-trigger-text {
+    display: flex;
+  }
+
+  .topbar .theme-toggle {
+    display: grid;
+  }
+
+  .drawer-theme {
+    display: none;
+  }
+}
+
+/* sm: >= 640 */
+@media (min-width: 640px) {
+  .topbar {
+    height: 72px;
+    gap: 12px;
+    padding: 0 20px;
+  }
+
+  .topbar .brand-logo {
+    width: 48px;
+    height: 48px;
+  }
+
+  .brand-tag {
+    display: block;
+  }
+
+  .top-actions {
+    gap: 12px;
+  }
+
+  .family-trigger-text small {
+    display: block;
+  }
+
+  .family-trigger-text {
+    max-width: 120px;
+  }
+
+  .main {
+    padding: 26px 24px 40px;
+  }
+}
+
+/* md: >= 768 */
+@media (min-width: 768px) {
+  .main {
+    padding: 32px 32px 44px;
+  }
+
+  .bg-blob {
+    display: block; /* decorative blur blobs are skipped on phones (perf) */
+  }
+}
+
+/* lg: >= 1024  -> desktop layout: fixed sidebar, hamburger gone */
+@media (min-width: 1024px) {
+  :root {
+    --sidebar-w: 220px; /* slimmer sidebar on small laptops */
+  }
+
+  .topbar {
+    padding: 0 28px;
+  }
+
+  .sidebar {
+    display: block;
+  }
+
+  .main {
+    margin-left: var(--sidebar-w);
+    width: calc(100% - var(--sidebar-w));
+    min-height: calc(100vh - 72px);
+    padding: 38px 40px 44px;
+  }
+
+  .main > * {
+    max-width: 1120px;
+  }
+
+  .pill,
+  .health-status {
+    display: inline-flex;
+  }
+}
+
+@supports (min-height: 100dvh) {
+  @media (min-width: 1024px) {
+    .main {
+      min-height: calc(100dvh - 72px);
+    }
+  }
+}
+
+/* xl: >= 1280 */
+@media (min-width: 1280px) {
+  :root {
+    --sidebar-w: 240px;
+  }
+}
+
+/* 2xl: >= 1536 (large monitors) -> use the extra room */
+@media (min-width: 1536px) {
+  .main {
+    padding: 44px 56px 52px;
+  }
+
+  .main > * {
+    max-width: 1280px;
+  }
+}
+
+/* ultra-wide: >= 1920 */
+@media (min-width: 1920px) {
+  .main > * {
+    max-width: 1440px;
+  }
+}
+
+/* ---------- 3. Hamburger button + slide-in drawer (below lg) ---------- */
+
+.menu-toggle {
+  flex: 0 0 auto;
+  display: inline-grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--card-soft);
+  color: var(--ink);
+  cursor: pointer;
+}
+
+.drawer-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 255;
+  background: rgba(20, 8, 11, 0.5);
+  -webkit-backdrop-filter: blur(4px);
+  backdrop-filter: blur(4px);
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 0.25s ease, visibility 0s linear 0.25s;
+}
+
+.drawer-backdrop.open {
+  opacity: 1;
+  visibility: visible;
+  transition-delay: 0s;
+}
+
+.drawer {
+  position: fixed;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  z-index: 260;
+  width: min(320px, 86vw);
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: calc(16px + env(safe-area-inset-top)) 16px calc(16px + env(safe-area-inset-bottom))
+    calc(16px + env(safe-area-inset-left));
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  background: linear-gradient(180deg, var(--card), var(--bg-2));
+  border-right: 1px solid var(--line);
+  box-shadow: var(--shadow-lg);
+  transform: translateX(-100%);
+  visibility: hidden; /* closed drawer is not focusable / readable */
+  transition: transform 0.28s cubic-bezier(0.2, 0.8, 0.2, 1), visibility 0s linear 0.28s;
+}
+
+.drawer.open {
+  transform: none;
+  visibility: visible;
+  transition-delay: 0s;
+}
+
+.drawer-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.drawer .nav-item {
+  min-height: 48px;
+  font-size: 14px;
+}
+
+.drawer .toolkit-button {
+  margin-top: auto;
+}
+
+@media (min-width: 1024px) {
+  .menu-toggle,
+  .drawer,
+  .drawer-backdrop {
+    display: none;
+  }
+}
+
+/* ---------- 4. Grids: 1 col phone -> 2 tablet -> 3-4 laptop ---------- */
+
+.grid {
+  gap: clamp(14px, 2vw, 18px);
+}
+
+.grid-2,
+.grid-3,
+.grid-4 {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+@media (min-width: 640px) {
+  .grid-3,
+  .grid-4 {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (min-width: 768px) {
+  .grid-2 {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (min-width: 1024px) {
+  .grid-3 {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@media (min-width: 1280px) {
+  .grid-4 {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}
+
+/* Category cards (booking + landing) */
+.category-grid {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.second-opinion-card {
+  transform: none; /* the "raised" card only makes sense in a 4-col row */
+}
+
+@media (min-width: 560px) {
+  .category-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+/* landing page has the full width -> 4 cols from lg;
+   in-app (next to the sidebar) it needs xl before 4 cols fit comfortably */
+@media (min-width: 1024px) {
+  .land .category-grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+
+  .land .second-opinion-card {
+    transform: translateY(-12px);
+  }
+}
+
+@media (min-width: 1280px) {
+  .main .category-grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+
+  .main .second-opinion-card {
+    transform: translateY(-12px);
+  }
+}
+
+/* ---------- 5. Cards, hero, forms ---------- */
+
+.card {
+  padding: clamp(16px, 3.5vw, 22px);
+  /* lets children react to the CARD's width (see .row below), not the screen */
+  container-type: inline-size;
+}
+
+.hero {
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 16px;
+  margin-bottom: 22px;
+}
+
+.hero > div {
+  flex: 1 1 280px;
+  min-width: 0;
+}
+
+.hero > .btn {
+  flex: 0 0 auto;
+}
+
+@media (max-width: 639px) {
+  .hero > .btn {
+    width: 100%;
+  }
+}
+
+@media (min-width: 768px) {
+  .hero {
+    flex-wrap: nowrap;
+    align-items: flex-end;
+    gap: 24px;
+    margin-bottom: 28px;
+  }
+}
+
+.section-head {
+  flex-wrap: wrap;
+}
+
+/* two-up form fields only when the CARD is wide enough (container query),
+   so forms never get cramped inside narrow tablet columns */
+.row {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+@container (min-width: 440px) {
+  .row {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@supports not (container-type: inline-size) {
+  @media (min-width: 640px) {
+    .row {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+  }
+}
+
+/* long file names / values must wrap instead of pushing the layout */
+.list-item {
+  flex-wrap: wrap;
+}
+
+.list-item > div:first-child {
+  min-width: 0;
+  flex: 1 1 200px;
+}
+
+.list-item b {
+  overflow-wrap: anywhere;
+}
+
+/* ---------- 6. Tables: scroll sideways inside their own box ---------- */
+
+.table-wrap {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-x: contain;
+}
+
+.table-wrap .table {
+  min-width: 420px;
+}
+
+.table th,
+.table td {
+  white-space: nowrap;
+}
+
+/* ---------- 7. Landing page ---------- */
+
+.auth-wrap {
+  padding: clamp(10px, 3vw, 25px);
+}
+
+.land {
+  width: 100%;
+  max-width: 1160px;
+}
+
+.land-card {
+  position: relative;
+  overflow: hidden;
+  padding: clamp(16px, 4vw, 34px);
+}
+
+.land-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px 20px;
+}
+
+.land-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.hero-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: clamp(24px, 4vw, 40px);
+  align-items: center;
+  padding: clamp(28px, 6vw, 60px) 0 clamp(24px, 5vw, 55px);
+}
+
+.hero-photo {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 4 / 3;
+}
+
+@media (min-width: 768px) {
+  .hero-grid {
+    grid-template-columns: minmax(0, 1.1fr) minmax(0, 0.9fr);
+  }
+
+  .hero-photo {
+    aspect-ratio: auto;
+    height: clamp(340px, 42vw, 520px);
+  }
+}
+
+@media (min-width: 1536px) {
+  .land {
+    max-width: 1360px;
+  }
+}
+
+.trust-row {
+  gap: 10px 18px;
+}
+
+.site-footer {
+  justify-content: center;
+  text-align: center;
+}
+
+@media (min-width: 640px) {
+  .site-footer {
+    justify-content: space-between;
+    text-align: left;
+  }
+}
+
+.footer-links {
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+/* ---------- 8. Popups: family menu, modal, toast ---------- */
+
+.family-menu {
+  width: min(260px, calc(100vw - 28px));
+}
+
+/* phones: menu spans the screen under the topbar instead of overflowing it
+   (topbar has backdrop-filter, so "fixed" is relative to the topbar box) */
+@media (max-width: 559px) {
+  .family-switcher {
+    position: static;
+  }
+
+  .family-menu {
+    position: fixed;
+    left: 14px;
+    right: 14px;
+    top: calc(100% + 6px);
+    width: auto;
+  }
+
+  .toast {
+    left: 14px;
+    right: 14px;
+    bottom: calc(14px + env(safe-area-inset-bottom));
+    text-align: center;
+  }
+
+  /* modal becomes a bottom sheet */
+  .modal-backdrop {
+    place-items: end center;
+    padding: 0;
+  }
+
+  .modal {
+    width: 100%;
+    max-height: 92dvh;
+    padding: 20px 16px calc(20px + env(safe-area-inset-bottom));
+    border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+  }
+}
+
+/* ---------- 9. Touch devices / small screens ---------- */
+
+/* >= 44 x 44px targets + 16px inputs (stops iOS zoom-on-focus) */
+@media (pointer: coarse), (max-width: 1023px) {
+  .btn,
+  .toolkit-button {
+    min-height: 44px;
+    padding-left: 16px;
+    padding-right: 16px;
+    font-size: 13px;
+  }
+
+  .theme-toggle,
+  .modal-close {
+    width: 44px;
+    height: 44px;
+  }
+
+  .family-trigger,
+  .family-option,
+  .nav-item {
+    min-height: 44px;
+  }
+
+  .field input,
+  .field select,
+  .field textarea,
+  .family-add input {
+    min-height: 44px;
+    font-size: 16px;
+  }
+
+  .field textarea {
+    min-height: 105px;
+  }
+
+  .footer-links a {
+    display: inline-flex;
+    align-items: center;
+    min-height: 44px;
+    padding: 0 6px;
+  }
+}
+
+/* hover-lift effects get "stuck" after a tap on touch screens */
+@media (hover: none) {
+  .btn:hover,
+  .btn-primary:hover,
+  .card:hover,
+  .media-card:hover {
+    transform: none;
+  }
 }

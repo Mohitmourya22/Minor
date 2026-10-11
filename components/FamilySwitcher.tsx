@@ -31,6 +31,7 @@ export default function FamilySwitcher() {
     <div className="family-switcher" ref={ref}>
       <button
         type="button" className="family-trigger" aria-haspopup="listbox" aria-expanded={open}
+        aria-label={`Family care: ${active.name}`}
         onClick={() => setOpen((o) => !o)}
       >
         <UsersRound size={15} />

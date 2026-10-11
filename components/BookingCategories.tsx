@@ -32,7 +32,7 @@ export default function BookingCategories({ book, saving, saveError, initialCate
         {CATEGORIES.map((c) => (
           <button key={c.id} type="button" className="category-card glass" onClick={() => setOpen(c)}>
             <span className="category-photo">
-              <Image src={c.image} alt="" fill sizes="(max-width: 700px) 100vw, 25vw" style={{ objectFit: "cover", objectPosition: c.position }} />
+              <Image src={c.image} alt="" fill sizes="(max-width: 559px) 100vw, (max-width: 1279px) 50vw, 25vw" style={{ objectFit: "cover", objectPosition: c.position }} />
               {c.badge && <span className="category-badge"><Lock size={11} /> {c.badge}</span>}
             </span>
             <span className="category-body">
