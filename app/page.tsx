@@ -1,6 +1,7 @@
 import Link from "next/link";
 import Image from "next/image";
 import Footer from "../components/Footer";
+import Testimonials from "../components/Testimonials";
 import { CATEGORIES } from "../lib/categories";
 import { Show, SignInButton, SignUpButton } from "@clerk/nextjs";
 import {
@@ -9,6 +10,7 @@ import {
   Lock,
   CalendarDays,
   Clock,
+  FileUp,
   HeartPulse,
   ShieldCheck,
   Sparkles,
@@ -42,7 +44,7 @@ export default function Home() {
               <div className="brand">
                 <Image
                   src="/assets/ayumarg-logo.png"
-                  alt="AyuMarg logo"
+                  alt="AayuMarg logo"
                   width={56}
                   height={56}
                   priority
@@ -51,7 +53,7 @@ export default function Home() {
                   style={{ width: 56, height: 56 }}
                 />
                 <span className="brand-text">
-                  <span className="brand-name">AyuMarg</span>
+                  <span className="brand-name">AayuMarg</span>
                   <span className="brand-tag">We care</span>
                 </span>
               </div>
@@ -101,9 +103,10 @@ export default function Home() {
                 </h1>
 
                 <p className="sub">
-                  A calm digital space for AyuMarg families to connect, manage
-                  essential health information, and stay closer to the care that
-                  matters — all in one warm, easy place.
+                  Book OPD consultations — elderly care, second opinion, mental
+                  health and sexual health — and keep your family&apos;s vitals
+                  and medical records together, all in one warm, easy place
+                  built for AayuMarg families.
                 </p>
 
                 <div
@@ -130,9 +133,9 @@ export default function Home() {
                     </Link>
                   </Show>
 
-                  <a className="btn btn-gold" href="#features">
+                  <a className="btn btn-gold" href="#services">
                     <Star size={16} />
-                    See how it works
+                    Explore services
                   </a>
                 </div>
 
@@ -214,7 +217,7 @@ export default function Home() {
               <div className="photo-card hero-photo">
                 <Image
                   src={IMG.hero}
-                  alt="Calm AyuMarg partner clinic reception"
+                  alt="Calm AayuMarg partner clinic reception"
                   fill
                   priority
                   sizes="(max-width: 767px) 100vw, 50vw"
@@ -233,52 +236,19 @@ export default function Home() {
               </div>
             </div>
 
-            {/* FEATURES — TEXT CARDS */}
-            <div id="features" className="grid grid-3" style={{ marginTop: 6 }}>
-              <div className="media-card feature-card">
-                <div className="icon-box">
-                  <UsersRound size={19} />
-                </div>
-                <div className="feature-card-body">
-                  <div className="card-title">Profile</div>
-                  <div className="muted" style={{ marginTop: 6 }}>
-                    Name, age, contact, address and caregiver details — kept
-                    together and easy to update.
-                  </div>
-                </div>
-              </div>
-
-              <div className="media-card feature-card">
-                <div className="icon-box">
-                  <HeartPulse size={19} />
-                </div>
-                <div className="feature-card-body">
-                  <div className="card-title">Vitals Vault</div>
-                  <div className="muted" style={{ marginTop: 6 }}>
-                    Blood pressure, heart rate, SpO₂, temperature, sugar and
-                    weight, all in one place.
-                  </div>
-                </div>
-              </div>
-
-              <div className="media-card feature-card">
-                <div className="icon-box">
-                  <ShieldCheck size={19} />
-                </div>
-                <div className="feature-card-body">
-                  <div className="card-title">Secure sign-in</div>
-                  <div className="muted" style={{ marginTop: 6 }}>
-                    Clerk authentication for the demo; backend storage and
-                    verified providers come next.
-                  </div>
-                </div>
+            {/* SERVICES — shown to everyone (no login needed) so visitors see what we offer */}
+            <div id="services" className="section-head" style={{ marginTop: 6 }}>
+              <div>
+                <div className="eyebrow">Our services</div>
+                <h2>OPD care for every need in your family</h2>
+                <p className="muted section-lead">
+                  Book consultations for elderly care, second opinions, mental
+                  health and sexual health. Mental and sexual health bookings
+                  stay confidential.
+                </p>
               </div>
             </div>
 
-            {/* CARE CATEGORIES */}
-            <div className="section-head" style={{ marginTop: 40 }}>
-              <h2>Book an OPD visit</h2>
-            </div>
             <div className="category-grid">
               {CATEGORIES.map((c) => (
                 <Link
@@ -312,6 +282,88 @@ export default function Home() {
                 </Link>
               ))}
             </div>
+
+            <Show when="signed-out">
+              <div className="services-cta">
+                <SignUpButton mode="modal">
+                  <button className="btn btn-primary">
+                    Sign up to book an OPD visit
+                    <ArrowRight size={17} />
+                  </button>
+                </SignUpButton>
+                <span className="muted">
+                  Already a member?{" "}
+                  <SignInButton mode="modal">
+                    <button className="link-btn">Sign in</button>
+                  </SignInButton>
+                </span>
+              </div>
+            </Show>
+
+            {/* CARE TOOLS — what you get inside your care space */}
+            <div className="section-head" style={{ marginTop: 40 }}>
+              <div>
+                <div className="eyebrow">Your care space</div>
+                <h2>Everything your family needs, together</h2>
+              </div>
+            </div>
+
+            <div id="features" className="grid grid-4">
+              <div className="media-card feature-card">
+                <div className="icon-box">
+                  <UsersRound size={19} />
+                </div>
+                <div className="feature-card-body">
+                  <div className="card-title">Family profiles</div>
+                  <div className="muted" style={{ marginTop: 6 }}>
+                    Name, age, contact, address and caregiver details — kept
+                    together and easy to update.
+                  </div>
+                </div>
+              </div>
+
+              <div className="media-card feature-card">
+                <div className="icon-box">
+                  <HeartPulse size={19} />
+                </div>
+                <div className="feature-card-body">
+                  <div className="card-title">Vitals Vault</div>
+                  <div className="muted" style={{ marginTop: 6 }}>
+                    Blood pressure, heart rate, SpO₂, temperature, sugar and
+                    weight, all in one place.
+                  </div>
+                </div>
+              </div>
+
+              <div className="media-card feature-card">
+                <div className="icon-box">
+                  <FileUp size={19} />
+                </div>
+                <div className="feature-card-body">
+                  <div className="card-title">Medical Records</div>
+                  <div className="muted" style={{ marginTop: 6 }}>
+                    Upload prescriptions, lab reports and scans as PDF or
+                    images, and find them again easily.
+                  </div>
+                </div>
+              </div>
+
+              <div className="media-card feature-card">
+                <div className="icon-box">
+                  <CalendarDays size={19} />
+                </div>
+                <div className="feature-card-body">
+                  <div className="card-title">Easy OPD booking</div>
+                  <div className="muted" style={{ marginTop: 6 }}>
+                    Pick a service, date and time for any family member and keep
+                    every booking in one place.
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* TESTIMONIALS (dummy data, see lib/testimonials.ts) */}
+            <Testimonials />
 
             <Footer />
           </div>

@@ -8,13 +8,13 @@ import './globals.css'
 const inter = Inter({ subsets: ['latin'], variable: '--font-sans', display: 'swap' })
 
 export const metadata: Metadata = {
-  title: { default: 'AyuMarg — We care', template: '%s · AyuMarg' },
+  title: { default: 'AayuMarg — We care', template: '%s · AayuMarg' },
   description:
-    'AyuMarg is a calm digital space for families to manage care profiles, health vitals, medical records and healthcare bookings in one place.',
+    'AayuMarg is a calm digital space for families to book OPD consultations (elderly care, second opinion, mental health, sexual health) and manage care profiles, health vitals and medical records in one place.',
   openGraph: {
-    title: 'AyuMarg — We care',
+    title: 'AayuMarg — We care',
     description: 'Care, connected. Simple enough for everyone.',
-    siteName: 'AyuMarg',
+    siteName: 'AayuMarg',
     type: 'website',
   },
 }

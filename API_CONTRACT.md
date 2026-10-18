@@ -1,4 +1,4 @@
-# AyuMarg — API Contract (frontend → backend)
+# AayuMarg — API Contract (frontend → backend)
 
 All calls go through `lib/api/client.ts` (the only place that uses `fetch`).
 Base URL: `NEXT_PUBLIC_API_BASE_URL` (default `/api`).
