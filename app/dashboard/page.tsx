@@ -2,6 +2,7 @@
 import Link from 'next/link'
 import AppNav from '../../components/AppNav'
 import Footer from '../../components/Footer'
+import Testimonials from '../../components/Testimonials'
 import { useDocuments } from '../../lib/hooks/useDocuments'
 import { useBooking } from '../../lib/hooks/useBooking'
 import { useVitals } from '../../lib/hooks/useVitals'
@@ -32,7 +33,7 @@ export default function Dashboard() {
             <div className="eyebrow">Your care workspace</div>
             <h1 className="h1">Good to see you, {user?.firstName || 'there'}.</h1>
             <p className="sub">
-              Your AyuMarg space for family-led care: profile, health vitals, medical
+              Your AayuMarg space for family-led care: profile, health vitals, medical
               records and service booking in one calm place. Viewing care for <b>{active.name}</b>.
             </p>
           </div>
@@ -111,6 +112,8 @@ export default function Dashboard() {
             </div>
           </div>
         </div>
+
+        <Testimonials limit={3} />
 
         <Footer />
       </main>

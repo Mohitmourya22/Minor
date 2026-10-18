@@ -41,7 +41,7 @@ export default function Page() {
         <div className="eyebrow">Account &amp; care details</div>
         <h1 className="h1">User registration &amp; profile</h1>
         <p className="sub">
-          Keep the essential information simple. Your details are stored through the AyuMarg
+          Keep the essential information simple. Your details are stored through the AayuMarg
           service layer (demo mode keeps them in this browser only).
         </p>
 

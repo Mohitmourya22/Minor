@@ -105,7 +105,7 @@ export default function AppNav() {
             <Menu size={20} />
           </button>
 
-          <Link href="/dashboard" className="brand" aria-label="AyuMarg – go to dashboard">
+          <Link href="/dashboard" className="brand" aria-label="AayuMarg – go to dashboard">
             <Image
               src="/assets/ayumarg-logo.png"
               alt=""
@@ -115,7 +115,7 @@ export default function AppNav() {
               className="brand-logo glow-logo"
             />
             <span className="brand-text">
-              <span className="brand-name">AyuMarg</span>
+              <span className="brand-name">AayuMarg</span>
               <span className="brand-tag">We care</span>
             </span>
           </Link>

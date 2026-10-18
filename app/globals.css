@@ -1,5 +1,5 @@
 /* =========================================================
-   AYUMARG
+   AAYUMARG
    Premium Healthcare UI
    Light + Dark Mode
 ========================================================= */
@@ -1388,7 +1388,7 @@ body::before {
 
 
 /* =========================================================
-   BRAND (AyuMarg logo + wordmark)
+   BRAND (AayuMarg logo + wordmark)
 ========================================================= */
 
 .brand-logo {
@@ -2591,23 +2591,6 @@ video {
   gap: 10px 18px;
 }
 
-.site-footer {
-  justify-content: center;
-  text-align: center;
-}
-
-@media (min-width: 640px) {
-  .site-footer {
-    justify-content: space-between;
-    text-align: left;
-  }
-}
-
-.footer-links {
-  flex-wrap: wrap;
-  justify-content: center;
-}
-
 /* ---------- 8. Popups: family menu, modal, toast ---------- */
 
 .family-menu {
@@ -2686,9 +2669,12 @@ video {
     min-height: 105px;
   }
 
-  .footer-links a {
-    display: inline-flex;
-    align-items: center;
+  .site-footer a,
+  .site-footer .footer-line {
+    min-height: 44px;
+  }
+
+  .services-cta .link-btn {
     min-height: 44px;
     padding: 0 6px;
   }
@@ -2701,5 +2687,217 @@ video {
   .card:hover,
   .media-card:hover {
     transform: none;
+  }
+}
+
+
+/* =========================================================
+   FOOTER (brand + quick links + contact us)
+========================================================= */
+
+.site-footer {
+  display: block;
+  text-align: left;
+  padding: 26px 4px 4px;
+}
+
+.footer-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr); /* phones: stacked */
+  gap: 22px;
+}
+
+.footer-col {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  min-width: 0;
+}
+
+.footer-title {
+  color: var(--ink);
+  font-size: 14px;
+  font-weight: 800;
+  margin-bottom: 2px;
+}
+
+.footer-col p {
+  margin: 0;
+  max-width: 40ch;
+  line-height: 1.6;
+}
+
+.footer-col a,
+.footer-line {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13.5px;
+  overflow-wrap: anywhere;
+}
+
+.footer-bottom {
+  margin-top: 22px;
+  padding-top: 14px;
+  border-top: 1px solid var(--line);
+  text-align: center;
+  font-size: 12.5px;
+}
+
+@media (min-width: 640px) {
+  .footer-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .footer-about {
+    grid-column: 1 / -1;
+  }
+}
+
+@media (min-width: 1024px) {
+  .footer-grid {
+    grid-template-columns: 1.5fr 1fr 1.2fr;
+    gap: 32px;
+  }
+
+  .footer-about {
+    grid-column: auto;
+  }
+}
+
+/* =========================================================
+   SERVICES intro + CTA, TESTIMONIALS
+========================================================= */
+
+.section-lead {
+  margin: 8px 0 0;
+  max-width: 62ch;
+  line-height: 1.6;
+}
+
+.services-cta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px 18px;
+  margin-top: 22px;
+}
+
+@media (max-width: 639px) {
+  .services-cta .btn {
+    width: 100%;
+  }
+}
+
+.link-btn {
+  background: none;
+  border: 0;
+  padding: 0;
+  font: inherit;
+  font-weight: 700;
+  color: var(--primary);
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.testimonial-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr); /* 1 col phone */
+  gap: clamp(14px, 2vw, 18px);
+}
+
+@media (min-width: 640px) {
+  .testimonial-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (min-width: 1024px) {
+  .testimonial-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+.testimonial-card {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin: 0;
+  padding: clamp(16px, 3.5vw, 22px);
+  border-radius: var(--radius-lg);
+}
+
+.testimonial-stars {
+  display: flex;
+  gap: 2px;
+  color: #c9962b;
+}
+
+.testimonial-card blockquote {
+  margin: 0;
+  flex: 1;
+  font-size: 14.5px;
+  line-height: 1.65;
+  color: var(--ink);
+  overflow-wrap: anywhere;
+}
+
+.testimonial-card figcaption {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+
+.testimonial-avatar {
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--primary) 12%, transparent);
+  color: var(--primary);
+  font-weight: 800;
+}
+
+.testimonial-who {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.testimonial-who small {
+  color: var(--muted);
+  font-size: 12.5px;
+}
+
+/* =========================================================
+   Very small phones (< 380px): keep "AayuMarg" fully visible
+========================================================= */
+
+@media (max-width: 379px) {
+  .topbar {
+    padding: 0 10px;
+    gap: 6px;
+  }
+
+  .topbar-left {
+    gap: 6px;
+  }
+
+  .topbar .brand {
+    gap: 8px;
+  }
+
+  .topbar .brand-logo {
+    width: 36px;
+    height: 36px;
+  }
+
+  .brand-name {
+    font-size: 16px;
   }
 }

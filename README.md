@@ -1,6 +1,6 @@
-# AyuMarg — We care
+# AayuMarg — We care
 
-AyuMarg is a calm digital space for families to manage a care profile, health vitals, medical records and healthcare bookings. This repository is the **front-end prototype**, structured so a backend and AI agents can be plugged in without touching the UI.
+AayuMarg is a calm digital space for families to manage a care profile, health vitals, medical records and healthcare bookings. This repository is the **front-end prototype**, structured so a backend and AI agents can be plugged in without touching the UI.
 
 ## Tech stack
 Next.js (App Router) · React · TypeScript · Clerk (auth) · lucide-react · plain CSS design tokens (`app/globals.css`).

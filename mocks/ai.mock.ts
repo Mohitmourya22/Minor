@@ -2,7 +2,7 @@ import type { AiChatResponse, AiHealthSummary } from "@/lib/types";
 /** MOCK AI replies. Replace by the real backend AI endpoint (see API_CONTRACT.md). */
 export const mockAiReply = (): AiChatResponse => ({
   reply:
-    "This is a demo response. The AyuMarg assistant will be connected to the backend soon. " +
+    "This is a demo response. The AayuMarg assistant will be connected to the backend soon. " +
     "For medical concerns, please consult a qualified doctor.",
 });
 export const mockAiSummary = (): AiHealthSummary => ({
