@@ -12,5 +12,7 @@ export const API_ENDPOINTS = {
     remove: (id: string) => `/documents/${encodeURIComponent(id)}`,
   },
   bookings: { latest: "/bookings/latest", create: "/bookings" },
+  payments: { order: "/payments/order", verify: "/payments/verify", submit: "/payments/submit" },
+  pricing: "/pricing",
   ai: { chat: "/ai/chat", healthSummary: "/ai/health-summary" },
 } as const;

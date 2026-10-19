@@ -21,7 +21,7 @@ export default function Dashboard() {
 
   const latest = vitals[0]
   const bookedText = booking
-    ? `${bookingLabel(booking)}${booking.patientName ? ` for ${booking.patientName}` : ''} · ${booking.date} · ${booking.time}`
+    ? `${bookingLabel(booking)}${booking.patientName ? ` for ${booking.patientName}` : ''} · ${booking.date} · ${booking.time}${booking.status === 'Awaiting payment' ? ' · payment pending' : booking.status === 'Payment submitted' ? ' · payment under verification' : ''}`
     : 'No upcoming booking'
 
   return (

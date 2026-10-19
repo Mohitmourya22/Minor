@@ -2901,3 +2901,13 @@ video {
     font-size: 16px;
   }
 }
+
+   .modal-backdrop {
+     z-index: 9999;
+     align-items: center;
+     overflow-y: auto;
+   }
+   .modal {
+     max-height: calc(100dvh - 32px);
+     overflow-y: auto;
+   }

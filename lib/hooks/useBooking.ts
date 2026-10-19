@@ -9,11 +9,19 @@ export function useBooking() {
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
 
-  async function book(b: Booking) {
+  /**
+   * Creates the booking (server decides fee + doctor). Returns the created booking, or null on failure.
+   * If booking.paymentStatus === "unpaid" the caller shows <UpiPayPanel/> to collect the UTR.
+   */
+  async function book(b: Booking): Promise<Booking | null> {
     setSaving(true); setSaveError(null);
-    try { res.setData(await createBooking(b)); return true; }
-    catch (e) { setSaveError((e as Error).message); return false; }
+    try {
+      const created = await createBooking(b);
+      res.setData(created);
+      return created;
+    } catch (e) { setSaveError((e as Error).message); return null; }
     finally { setSaving(false); }
   }
+
   return { ...res, booking: res.data, book, saving, saveError };
 }

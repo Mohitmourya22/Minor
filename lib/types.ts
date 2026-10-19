@@ -25,6 +25,12 @@ export interface Booking {
   patientId?: string; patientName?: string;
   /** Names of files attached to the booking (files themselves go through POST /documents). */
   attachments?: string[];
+  /** Set by the backend: short booking code (e.g. AM-7K3Q9X). */
+  ref?: string;
+  /** Set by the backend. "unpaid" until the patient submits a UTR, "submitted" until the doctor confirms. */
+  paymentStatus?: "unpaid" | "submitted" | "paid";
+  /** Consultation fee in rupees (set by the backend). */
+  amount?: number;
 }
 
 export interface FamilyMember { id: string; name: string; relation: string }

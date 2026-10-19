@@ -50,3 +50,7 @@ Standard Next.js: `npm run build && npm start`, or deploy to any Next.js host (e
 - No backend exists yet; all data is MOCK (browser storage) and documents keep metadata only.
 - No AI UI yet (service + hook are ready).
 - Hero/feature photos are hot-linked from Unsplash/Pexels; download them into `public/assets/` before production.
+
+
+## Backend
+The real backend (Supabase + Razorpay + Twilio WhatsApp) is described in [BACKEND_SETUP.md](BACKEND_SETUP.md). Without it the app runs in demo mode (`NEXT_PUBLIC_USE_MOCKS=true`).
