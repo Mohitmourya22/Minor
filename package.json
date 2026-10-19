@@ -9,15 +9,20 @@
   },
   "dependencies": {
     "@clerk/nextjs": "^7.9.2",
+    "@supabase/supabase-js": "^2.118.0",
     "lucide-react": "latest",
     "next": "latest",
     "react": "latest",
-    "react-dom": "latest"
+    "react-dom": "latest",
+    "server-only": "^0.0.1",
+    "zod": "^4.6.7",
+    "nodemailer": "^6.9.16"
   },
   "devDependencies": {
     "@types/node": "latest",
     "@types/react": "latest",
     "@types/react-dom": "latest",
-    "typescript": "latest"
+    "typescript": "latest",
+    "@types/nodemailer": "^6.4.17"
   }
 }

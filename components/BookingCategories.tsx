@@ -5,13 +5,15 @@ import { Camera, FileUp, Lock, X, CalendarDays } from "lucide-react";
 import { CATEGORIES, type CareCategory } from "@/lib/categories";
 import { useFamily } from "@/lib/family/FamilyContext";
 import { uploadDocuments } from "@/lib/services/documents.service";
+import { getFees } from "@/lib/services/pricing.service";
+import UpiPayPanel from "@/components/UpiPayPanel";
 import type { Booking, CategoryId } from "@/lib/types";
 
-const MAX_BYTES = 10 * 1024 * 1024;
+const MAX_BYTES = 4 * 1024 * 1024; // matches the server limit (Vercel rejects bigger uploads)
 const OK_TYPES = ["application/pdf", "image/jpeg", "image/png", "image/webp"];
 
 interface Props {
-  book: (b: Booking) => Promise<boolean>;
+  book: (b: Booking) => Promise<Booking | null>;
   saving: boolean;
   saveError: string | null;
   /** Open a category on mount (e.g. from ?category=). */
@@ -64,7 +66,10 @@ function OpdModal({
   const [files, setFiles] = useState<File[]>([]);
   const [fileError, setFileError] = useState<string | null>(null);
   const [done, setDone] = useState(false);
+  const [payBooking, setPayBooking] = useState<Booking | null>(null);
+  const [awaitingDoctor, setAwaitingDoctor] = useState(false);
   const [localError, setLocalError] = useState<string | null>(null);
+  const [fee, setFee] = useState<number | null>(null); // rupees; null = free / unknown / mock mode
   const dialogRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -76,13 +81,19 @@ function OpdModal({
     return () => { document.body.style.overflow = prevOverflow; document.removeEventListener("keydown", onKey); };
   }, [onClose]);
 
+  useEffect(() => {
+    let alive = true;
+    getFees().then((f) => { if (alive) setFee(f[category.id] ?? null); }).catch(() => {});
+    return () => { alive = false; };
+  }, [category.id]);
+
   function addFiles(list: FileList | null) {
     if (!list) return;
     const next: File[] = [];
     let err: string | null = null;
     for (const f of Array.from(list)) {
       if (!OK_TYPES.includes(f.type)) err = `“${f.name}” is not a PDF, JPG, PNG or WebP file.`;
-      else if (f.size > MAX_BYTES) err = `“${f.name}” is larger than 10 MB.`;
+      else if (f.size > MAX_BYTES) err = `“${f.name}” is larger than 4 MB.`;
       else next.push(f);
     }
     setFileError(err);
@@ -98,13 +109,17 @@ function OpdModal({
       setLocalError((err as Error).message || "Could not upload your files. Please try again.");
       return;
     }
-    const ok = await book({
+    const created = await book({
       service: category.service, category: category.id,
       date, time, reason: reason.trim() || "OPD consultation", status: "Confirmed",
       patientId: active.id, patientName: active.name,
       attachments: files.map((f) => f.name),
     });
-    if (ok) { setDone(true); onBooked?.(); }
+    if (created) {
+      if (created.paymentStatus === "unpaid" && created.id) setPayBooking(created);
+      else setDone(true);
+      onBooked?.();
+    }
   }
 
   const err = localError || saveError;
@@ -121,11 +136,13 @@ function OpdModal({
           <button type="button" className="modal-close" onClick={onClose} aria-label="Close"><X size={18} /></button>
         </div>
 
-        {done ? (
+        {payBooking ? (
+          <UpiPayPanel booking={payBooking} onSubmitted={() => { setPayBooking(null); setAwaitingDoctor(true); setDone(true); onBooked?.(); }} />
+        ) : done ? (
           <div className="modal-done">
-            <b>Booking confirmed for {active.name}.</b>
+            <b>{awaitingDoctor ? `Payment submitted for ${active.name}.` : `Booking confirmed for ${active.name}.`}</b>
             <p className="muted">
-              {category.confidential ? "It appears as a confidential consultation on your dashboard." : `${category.service} on ${date} at ${time}.`}
+              {awaitingDoctor ? "The doctor will confirm your booking once the payment is seen." : category.confidential ? "It appears as a confidential consultation on your dashboard." : `${category.service} on ${date} at ${time}.`}
             </p>
             <button className="btn btn-primary" onClick={onClose}>Done</button>
           </div>
@@ -172,11 +189,16 @@ function OpdModal({
                   ))}
                 </ul>
               )}
-              <small className="muted">PDF, JPG, PNG or WebP · up to 10 MB each · max 6 files</small>
+              <small className="muted">PDF, JPG, PNG or WebP · up to 4 MB each · max 6 files</small>
             </div>
 
             {err && <div className="error-state" role="alert">{err}</div>}
-            <button className="btn btn-primary" type="submit" disabled={saving}>{saving ? "Booking…" : "Confirm booking"}</button>
+            {fee ? (
+              <small className="muted">Consultation fee ₹{fee}. You pay by UPI on the next step.</small>
+            ) : null}
+            <button className="btn btn-primary" type="submit" disabled={saving}>
+              {saving ? "Please wait…" : fee ? `Continue to pay ₹${fee}` : "Confirm booking"}
+            </button>
           </form>
         )}
       </div>

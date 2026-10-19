@@ -7,6 +7,7 @@ import { CalendarDays, CheckCircle2 } from 'lucide-react'
 import { Suspense, useEffect, useState } from 'react'
 import { useSearchParams } from 'next/navigation'
 import BookingCategories from '../../components/BookingCategories'
+import UpiPayPanel from '../../components/UpiPayPanel'
 import { useFamily } from '../../lib/family/FamilyContext'
 import { bookingLabel } from '../../lib/categories'
 import type { Booking, CategoryId } from '../../lib/types'
@@ -29,6 +30,7 @@ function BookingPage() {
   const { booking, status, error, reload, book, saving, saveError } = useBooking()
   const [b, setB] = useState<Booking>(initial)
   const [saved, setSaved] = useState(false)
+  const [showPay, setShowPay] = useState(false)
 
   useEffect(() => {
     if (status === 'success' && booking) setB(booking)
@@ -41,7 +43,12 @@ function BookingPage() {
   }, [saved])
 
   const u = (k: keyof Booking, v: string) => setB({ ...b, [k]: v })
-  const save = async () => { if (await book({ ...b, patientId: active.id, patientName: active.name })) setSaved(true) }
+  const save = async () => {
+    const created = await book({ ...b, patientId: active.id, patientName: active.name })
+    if (!created) return
+    if (created.paymentStatus === 'unpaid') setShowPay(true)
+    else setSaved(true)
+  }
 
   return (
     <>
@@ -99,16 +106,30 @@ function BookingPage() {
               {status === 'error' && <ErrorState message={error ?? 'Could not load your booking.'} onRetry={reload} />}
               {status === 'success' && (booking ? (
                 <div style={{ display: 'flex', gap: 12 }}>
-                  <CheckCircle2 color="var(--success)" aria-hidden="true" />
+                  <CheckCircle2 color={booking.status === 'Confirmed' ? 'var(--success)' : 'var(--muted)'} aria-hidden="true" />
                   <div>
-                    <b>Booking confirmed</b>
+                    <b>{booking.status === 'Confirmed' ? 'Booking confirmed' : booking.paymentStatus === 'submitted' ? 'Payment under verification' : 'Payment pending'}</b>
                     <div className="muted" style={{ marginTop: 4 }}>
+                      {booking.ref && <>Ref: {booking.ref}<br /></>}
                       Service: {bookingLabel(booking)}<br />
                       {booking.patientName && <>For: {booking.patientName}<br /></>}
                       Date: {booking.date}<br />
                       Time: {booking.time}<br />
+                      {booking.amount ? <>Fee: ₹{booking.amount}<br /></> : null}
                       Status: {booking.status}
                     </div>
+                    {booking.paymentStatus === 'unpaid' && (showPay ? (
+                      <div style={{ marginTop: 14 }}>
+                        <UpiPayPanel booking={booking} onSubmitted={() => { setShowPay(false); reload() }} />
+                      </div>
+                    ) : (
+                      <button className="btn btn-primary" style={{ marginTop: 14 }} onClick={() => setShowPay(true)}>
+                        {`Pay ₹${booking.amount ?? ''} now`}
+                      </button>
+                    ))}
+                    {booking.paymentStatus === 'submitted' && (
+                      <div className="muted" style={{ marginTop: 10 }}>We have your payment details. The doctor will confirm shortly.</div>
+                    )}
                   </div>
                 </div>
               ) : (
