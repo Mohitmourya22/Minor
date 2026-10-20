@@ -36,6 +36,7 @@ export const bookingSchema = z.object({
   category: z.enum(CATEGORY_IDS).optional(),
   patientId: text(100).optional(),
   patientName: text(100).optional(),
+  whatsapp: z.string().trim().regex(/^\+?\d[\d\s-]{8,17}$/, "Enter a valid WhatsApp number").optional(),
   attachments: z.array(text(200)).max(6).optional(),
 });
 

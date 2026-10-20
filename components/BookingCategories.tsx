@@ -7,6 +7,8 @@ import { useFamily } from "@/lib/family/FamilyContext";
 import { uploadDocuments } from "@/lib/services/documents.service";
 import { getFees } from "@/lib/services/pricing.service";
 import UpiPayPanel from "@/components/UpiPayPanel";
+import ContactSoon from "@/components/ContactSoon";
+import { isValidWhatsapp } from "@/lib/whatsapp";
 import type { Booking, CategoryId } from "@/lib/types";
 
 const MAX_BYTES = 4 * 1024 * 1024; // matches the server limit (Vercel rejects bigger uploads)
@@ -63,6 +65,7 @@ function OpdModal({
   const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
   const [time, setTime] = useState("10:00");
   const [reason, setReason] = useState("");
+  const [whatsapp, setWhatsapp] = useState("");
   const [files, setFiles] = useState<File[]>([]);
   const [fileError, setFileError] = useState<string | null>(null);
   const [done, setDone] = useState(false);
@@ -103,6 +106,7 @@ function OpdModal({
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     setLocalError(null);
+    if (!isValidWhatsapp(whatsapp)) { setLocalError("Please enter a valid WhatsApp number so the doctor can reach you."); return; }
     try {
       if (files.length) await uploadDocuments(files);
     } catch (err) {
@@ -114,6 +118,7 @@ function OpdModal({
       date, time, reason: reason.trim() || "OPD consultation", status: "Confirmed",
       patientId: active.id, patientName: active.name,
       attachments: files.map((f) => f.name),
+      whatsapp: whatsapp.trim(),
     });
     if (created) {
       if (created.paymentStatus === "unpaid" && created.id) setPayBooking(created);
@@ -144,7 +149,8 @@ function OpdModal({
             <p className="muted">
               {awaitingDoctor ? "The doctor will confirm your booking once the payment is seen." : category.confidential ? "It appears as a confidential consultation on your dashboard." : `${category.service} on ${date} at ${time}.`}
             </p>
-            <button className="btn btn-primary" onClick={onClose}>Done</button>
+            {awaitingDoctor && <ContactSoon />}
+            <button className="btn btn-primary" style={{ marginTop: 14 }} onClick={onClose}>Done</button>
           </div>
         ) : (
           <form className="form" onSubmit={submit}>
@@ -158,6 +164,12 @@ function OpdModal({
                 <label htmlFor="o-time">Time</label>
                 <input id="o-time" type="time" required value={time} onChange={(e) => setTime(e.target.value)} />
               </div>
+            </div>
+            <div className="field">
+              <label htmlFor="o-whatsapp">Your WhatsApp number</label>
+              <input id="o-whatsapp" type="tel" inputMode="tel" required autoComplete="tel" placeholder="e.g. +91 98765 43210"
+                value={whatsapp} onChange={(e) => setWhatsapp(e.target.value)} />
+              <small className="muted">Shared only with the doctor, to contact you about this booking.</small>
             </div>
             <div className="field">
               <label htmlFor="o-reason">What would you like help with?</label>

@@ -10,6 +10,8 @@ import BookingCategories from '../../components/BookingCategories'
 import UpiPayPanel from '../../components/UpiPayPanel'
 import { useFamily } from '../../lib/family/FamilyContext'
 import { bookingLabel } from '../../lib/categories'
+import ContactSoon from '../../components/ContactSoon'
+import { isValidWhatsapp } from '../../lib/whatsapp'
 import type { Booking, CategoryId } from '../../lib/types'
 
 const initial = (): Booking => ({
@@ -31,6 +33,8 @@ function BookingPage() {
   const [b, setB] = useState<Booking>(initial)
   const [saved, setSaved] = useState(false)
   const [showPay, setShowPay] = useState(false)
+  const [whatsapp, setWhatsapp] = useState('')
+  const [waError, setWaError] = useState<string | null>(null)
 
   useEffect(() => {
     if (status === 'success' && booking) setB(booking)
@@ -44,7 +48,9 @@ function BookingPage() {
 
   const u = (k: keyof Booking, v: string) => setB({ ...b, [k]: v })
   const save = async () => {
-    const created = await book({ ...b, patientId: active.id, patientName: active.name })
+    if (!isValidWhatsapp(whatsapp)) { setWaError('Please enter a valid WhatsApp number so the doctor can reach you.'); return }
+    setWaError(null)
+    const created = await book({ ...b, patientId: active.id, patientName: active.name, whatsapp: whatsapp.trim() })
     if (!created) return
     if (created.paymentStatus === 'unpaid') setShowPay(true)
     else setSaved(true)
@@ -89,10 +95,15 @@ function BookingPage() {
                 </div>
               </div>
               <div className="field">
+                <label htmlFor="b-whatsapp">Your WhatsApp number</label>
+                <input id="b-whatsapp" type="tel" inputMode="tel" autoComplete="tel" placeholder="e.g. +91 98765 43210"
+                  value={whatsapp} onChange={e => setWhatsapp(e.target.value)} />
+              </div>
+              <div className="field">
                 <label htmlFor="b-reason">Reason</label>
                 <textarea id="b-reason" value={b.reason} onChange={e => u('reason', e.target.value)} placeholder="Reason for visit" />
               </div>
-              {saveError && <div className="error-state" role="alert">{saveError}</div>}
+              {(waError || saveError) && <div className="error-state" role="alert">{waError || saveError}</div>}
               <button className="btn btn-primary" onClick={save} disabled={saving}>
                 {saving ? 'Booking…' : 'Book now'}
               </button>
@@ -128,8 +139,12 @@ function BookingPage() {
                       </button>
                     ))}
                     {booking.paymentStatus === 'submitted' && (
-                      <div className="muted" style={{ marginTop: 10 }}>We have your payment details. The doctor will confirm shortly.</div>
+                      <>
+                        <div className="muted" style={{ marginTop: 10 }}>We have your payment details. The doctor will confirm shortly.</div>
+                        <ContactSoon />
+                      </>
                     )}
+                    {booking.paymentStatus === 'paid' && booking.amount ? <ContactSoon /> : null}
                   </div>
                 </div>
               ) : (

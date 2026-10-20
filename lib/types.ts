@@ -23,6 +23,8 @@ export interface Booking {
   /** Set when booked through a care category (OPD modal). */
   category?: CategoryId;
   patientId?: string; patientName?: string;
+  /** Patient's WhatsApp number (asked before payment; goes to the doctor by email only). */
+  whatsapp?: string;
   /** Names of files attached to the booking (files themselves go through POST /documents). */
   attachments?: string[];
   /** Set by the backend: short booking code (e.g. AM-7K3Q9X). */

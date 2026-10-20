@@ -20,7 +20,7 @@ export interface BookingRow {
   patient_id: string | null; patient_name: string | null; attachments: string[];
   status: string; payment_status: "unpaid" | "submitted" | "paid"; amount_paise: number;
   razorpay_order_id: string | null; razorpay_payment_id: string | null;
-  doctor_notified_at: string | null; utr?: string | null;
+  doctor_notified_at: string | null; utr?: string | null; whatsapp?: string | null;
 }
 
 /* ---------- database -> API (matches lib/types.ts) ---------- */
