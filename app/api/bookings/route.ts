@@ -1,7 +1,7 @@
 import { after } from "next/server";
 import { requireUserId } from "@/lib/server/auth";
 import { json, route } from "@/lib/server/http";
-import { assertBookingDateOk, bookingSchema, parseBody } from "@/lib/server/validation";
+import { assertBookingSlotOk, bookingSchema, parseBody } from "@/lib/server/validation";
 import { createBookingForUser } from "@/lib/server/bookings";
 import { notifyDoctorEmail } from "@/lib/server/notify";
 import { toBooking } from "@/lib/server/mappers";
@@ -14,7 +14,7 @@ import { toBooking } from "@/lib/server/mappers";
 export const POST = route(async (req) => {
   const userId = await requireUserId();
   const input = await parseBody(req, bookingSchema);
-  assertBookingDateOk(input.date);
+  assertBookingSlotOk(input.date, input.time);
 
   const { row, needsNotify } = await createBookingForUser(userId, input);
   if (needsNotify) after(() => notifyDoctorEmail(row.id));

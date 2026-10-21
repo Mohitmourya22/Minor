@@ -113,3 +113,10 @@ on conflict (id) do nothing;
 
 -- patient's WhatsApp number (asked before payment, emailed to the doctor)
 alter table public.bookings add column if not exists whatsapp text;
+
+-- structured profile fields (emergency contact + address)
+alter table public.profiles add column if not exists emergency_name  text not null default '';
+alter table public.profiles add column if not exists emergency_phone text not null default '';
+alter table public.profiles add column if not exists state   text not null default '';
+alter table public.profiles add column if not exists city    text not null default '';
+alter table public.profiles add column if not exists pincode text not null default '';

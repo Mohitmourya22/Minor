@@ -18,8 +18,9 @@ export const PUT = route(async (req) => {
 
   const { data, error } = await db().from("profiles").upsert({
     user_id: userId,
-    name: p.name, age: p.age, gender: p.gender, phone: p.phone, emergency: p.emergency,
-    address: p.address, type: p.type, caregiver_name: p.caregiverName, caregiver_phone: p.caregiverPhone,
+    name: p.name, age: p.age, gender: p.gender, phone: p.phone,
+    emergency_name: p.emergencyName, emergency_phone: p.emergencyPhone,
+    state: p.state, city: p.city, pincode: p.pincode, address: p.address, type: p.type, caregiver_name: p.caregiverName, caregiver_phone: p.caregiverPhone,
     updated_at: new Date().toISOString(),
   }, { onConflict: "user_id" }).select().single();
 

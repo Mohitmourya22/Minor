@@ -1,6 +1,7 @@
 export interface Profile {
   name: string; age: string; gender: string; phone: string;
-  emergency: string; address: string;
+  emergencyName: string; emergencyPhone: string;
+  state: string; city: string; pincode: string; address: string;
   type: "Elderly" | "General Public";
   caregiverName: string; caregiverPhone: string;
 }
@@ -33,6 +34,17 @@ export interface Booking {
   paymentStatus?: "unpaid" | "submitted" | "paid";
   /** Consultation fee in rupees (set by the backend). */
   amount?: number;
+}
+
+/** One row of the doctor dashboard (see /api/doctor/bookings). */
+export interface DoctorBooking {
+  id: string; ref: string; createdAt: string;
+  category: string; service: string; date: string; time: string;
+  reason: string; attachments: string[];
+  patientName: string; accountName: string; age: string; gender: string; city: string;
+  whatsapp: string; profilePhone: string;
+  amount: number; paymentStatus: "unpaid" | "submitted" | "paid"; status: string; utr: string;
+  confidential: boolean;
 }
 
 export interface FamilyMember { id: string; name: string; relation: string }

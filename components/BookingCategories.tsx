@@ -8,7 +8,8 @@ import { uploadDocuments } from "@/lib/services/documents.service";
 import { getFees } from "@/lib/services/pricing.service";
 import UpiPayPanel from "@/components/UpiPayPanel";
 import ContactSoon from "@/components/ContactSoon";
-import { isValidWhatsapp } from "@/lib/whatsapp";
+import { checkReason, checkSlot, checkWhatsapp, cleanWhatsapp, earliestSlot, formatEarliest, todayIst, MAX_REASON_WORDS } from "@/lib/validation/booking";
+import { wordCount } from "@/lib/validation/common";
 import type { Booking, CategoryId } from "@/lib/types";
 
 const MAX_BYTES = 4 * 1024 * 1024; // matches the server limit (Vercel rejects bigger uploads)
@@ -62,8 +63,8 @@ function OpdModal({
   category, book, saving, saveError, onClose, onBooked,
 }: { category: CareCategory; book: Props["book"]; saving: boolean; saveError: string | null; onClose: () => void; onBooked?: () => void }) {
   const { active } = useFamily();
-  const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
-  const [time, setTime] = useState("10:00");
+  const [date, setDate] = useState(() => earliestSlot().date);
+  const [time, setTime] = useState(() => earliestSlot().time);
   const [reason, setReason] = useState("");
   const [whatsapp, setWhatsapp] = useState("");
   const [files, setFiles] = useState<File[]>([]);
@@ -106,7 +107,8 @@ function OpdModal({
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     setLocalError(null);
-    if (!isValidWhatsapp(whatsapp)) { setLocalError("Please enter a valid WhatsApp number so the doctor can reach you."); return; }
+    const problem = checkSlot(date, time) || checkWhatsapp(whatsapp) || checkReason(reason);
+    if (problem) { setLocalError(problem); return; }
     try {
       if (files.length) await uploadDocuments(files);
     } catch (err) {
@@ -118,7 +120,7 @@ function OpdModal({
       date, time, reason: reason.trim() || "OPD consultation", status: "Confirmed",
       patientId: active.id, patientName: active.name,
       attachments: files.map((f) => f.name),
-      whatsapp: whatsapp.trim(),
+      whatsapp: cleanWhatsapp(whatsapp),
     });
     if (created) {
       if (created.paymentStatus === "unpaid" && created.id) setPayBooking(created);
@@ -158,7 +160,7 @@ function OpdModal({
             <div className="row">
               <div className="field">
                 <label htmlFor="o-date">Date</label>
-                <input id="o-date" type="date" required value={date} onChange={(e) => setDate(e.target.value)} />
+                <input id="o-date" type="date" required value={date} min={todayIst()} onChange={(e) => setDate(e.target.value)} />
               </div>
               <div className="field">
                 <label htmlFor="o-time">Time</label>
@@ -167,13 +169,17 @@ function OpdModal({
             </div>
             <div className="field">
               <label htmlFor="o-whatsapp">Your WhatsApp number</label>
-              <input id="o-whatsapp" type="tel" inputMode="tel" required autoComplete="tel" placeholder="e.g. +91 98765 43210"
-                value={whatsapp} onChange={(e) => setWhatsapp(e.target.value)} />
+              <input id="o-whatsapp" type="tel" inputMode="numeric" required autoComplete="tel" placeholder="10-digit mobile number" maxLength={14}
+                value={whatsapp} onChange={(e) => setWhatsapp(e.target.value.replace(/[^\d+ ]/g, ""))} />
+              {whatsapp && checkWhatsapp(whatsapp) && <small role="alert" style={{ color: "var(--error, #b3261e)" }}>{checkWhatsapp(whatsapp)}</small>}
               <small className="muted">Shared only with the doctor, to contact you about this booking.</small>
             </div>
             <div className="field">
               <label htmlFor="o-reason">What would you like help with?</label>
-              <textarea id="o-reason" value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Optional — a short note for the doctor" />
+              <textarea id="o-reason" value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Optional — a short note for the doctor" maxLength={1500} />
+              <small className="muted" style={wordCount(reason) > MAX_REASON_WORDS ? { color: "var(--error, #b3261e)" } : undefined}>
+                {wordCount(reason)} / {MAX_REASON_WORDS} words{checkReason(reason) ? ` — ${checkReason(reason)}` : ""}
+              </small>
             </div>
 
             <div className="field">
@@ -204,6 +210,7 @@ function OpdModal({
               <small className="muted">PDF, JPG, PNG or WebP · up to 4 MB each · max 6 files</small>
             </div>
 
+            <small className="muted">Earliest available slot: {formatEarliest()} (IST). Bookings need at least 2 hours' notice.</small>
             {err && <div className="error-state" role="alert">{err}</div>}
             {fee ? (
               <small className="muted">Consultation fee ₹{fee}. You pay by UPI on the next step.</small>
