@@ -10,12 +10,15 @@ import BookingCategories from '../../components/BookingCategories'
 import UpiPayPanel from '../../components/UpiPayPanel'
 import { useFamily } from '../../lib/family/FamilyContext'
 import { bookingLabel } from '../../lib/categories'
+import ContactSoon from '../../components/ContactSoon'
+import { checkReason, checkSlot, checkWhatsapp, cleanWhatsapp, earliestSlot, formatEarliest, todayIst, MAX_REASON_WORDS } from '../../lib/validation/booking'
+import { wordCount } from '../../lib/validation/common'
 import type { Booking, CategoryId } from '../../lib/types'
 
 const initial = (): Booking => ({
   service: 'Doctor Consultation',
-  date: new Date().toISOString().slice(0, 10),
-  time: '10:00',
+  date: earliestSlot().date,
+  time: earliestSlot().time,
   reason: 'Routine checkup',
   status: 'Confirmed',
 })
@@ -31,6 +34,8 @@ function BookingPage() {
   const [b, setB] = useState<Booking>(initial)
   const [saved, setSaved] = useState(false)
   const [showPay, setShowPay] = useState(false)
+  const [whatsapp, setWhatsapp] = useState('')
+  const [waError, setWaError] = useState<string | null>(null)
 
   useEffect(() => {
     if (status === 'success' && booking) setB(booking)
@@ -44,7 +49,10 @@ function BookingPage() {
 
   const u = (k: keyof Booking, v: string) => setB({ ...b, [k]: v })
   const save = async () => {
-    const created = await book({ ...b, patientId: active.id, patientName: active.name })
+    const problem = checkSlot(b.date, b.time) || checkWhatsapp(whatsapp) || checkReason(b.reason)
+    if (problem) { setWaError(problem); return }
+    setWaError(null)
+    const created = await book({ ...b, patientId: active.id, patientName: active.name, whatsapp: cleanWhatsapp(whatsapp) })
     if (!created) return
     if (created.paymentStatus === 'unpaid') setShowPay(true)
     else setSaved(true)
@@ -81,7 +89,7 @@ function BookingPage() {
               <div className="row">
                 <div className="field">
                   <label htmlFor="b-date">Date</label>
-                  <input id="b-date" type="date" value={b.date} onChange={e => u('date', e.target.value)} />
+                  <input id="b-date" type="date" value={b.date} min={todayIst()} onChange={e => u('date', e.target.value)} />
                 </div>
                 <div className="field">
                   <label htmlFor="b-time">Time</label>
@@ -89,10 +97,20 @@ function BookingPage() {
                 </div>
               </div>
               <div className="field">
-                <label htmlFor="b-reason">Reason</label>
-                <textarea id="b-reason" value={b.reason} onChange={e => u('reason', e.target.value)} placeholder="Reason for visit" />
+                <label htmlFor="b-whatsapp">Your WhatsApp number</label>
+                <input id="b-whatsapp" type="tel" inputMode="numeric" autoComplete="tel" placeholder="10-digit mobile number" maxLength={14}
+                  value={whatsapp} onChange={e => setWhatsapp(e.target.value.replace(/[^\d+ ]/g, ''))} />
+                {whatsapp && checkWhatsapp(whatsapp) && <small role="alert" style={{ color: 'var(--error, #b3261e)' }}>{checkWhatsapp(whatsapp)}</small>}
               </div>
-              {saveError && <div className="error-state" role="alert">{saveError}</div>}
+              <div className="field">
+                <label htmlFor="b-reason">Reason</label>
+                <textarea id="b-reason" value={b.reason} onChange={e => u('reason', e.target.value)} placeholder="Reason for visit" maxLength={1500} />
+                <small className="muted" style={wordCount(b.reason) > MAX_REASON_WORDS ? { color: 'var(--error, #b3261e)' } : undefined}>
+                  {wordCount(b.reason)} / {MAX_REASON_WORDS} words{checkReason(b.reason) ? ` — ${checkReason(b.reason)}` : ''}
+                </small>
+              </div>
+              <small className="muted">Earliest available slot: {formatEarliest()} (IST). Bookings need at least 2 hours' notice.</small>
+              {(waError || saveError) && <div className="error-state" role="alert">{waError || saveError}</div>}
               <button className="btn btn-primary" onClick={save} disabled={saving}>
                 {saving ? 'Booking…' : 'Book now'}
               </button>
@@ -128,8 +146,12 @@ function BookingPage() {
                       </button>
                     ))}
                     {booking.paymentStatus === 'submitted' && (
-                      <div className="muted" style={{ marginTop: 10 }}>We have your payment details. The doctor will confirm shortly.</div>
+                      <>
+                        <div className="muted" style={{ marginTop: 10 }}>We have your payment details. The doctor will confirm shortly.</div>
+                        <ContactSoon />
+                      </>
                     )}
+                    {booking.paymentStatus === 'paid' && booking.amount ? <ContactSoon /> : null}
                   </div>
                 </div>
               ) : (

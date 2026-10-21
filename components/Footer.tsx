@@ -1,6 +1,6 @@
 import Link from "next/link";
-import { Mail, Phone } from "lucide-react";
-import { SITE, phoneHref } from "@/lib/site";
+import { Mail } from "lucide-react";
+import { SITE } from "@/lib/site";
 
 /** lucide-react v1 no longer ships brand icons, so Instagram is an inline SVG. */
 function InstagramIcon({ size = 16 }: { size?: number }) {
@@ -24,8 +24,6 @@ function InstagramIcon({ size = 16 }: { size?: number }) {
 }
 
 export default function Footer() {
-  const tel = phoneHref(SITE.phone);
-
   return (
     <footer className="site-footer">
       {/* 1 column on phones -> 2 on tablets -> 3 on laptops (see .footer-grid) */}
@@ -47,16 +45,6 @@ export default function Footer() {
 
         <div className="footer-col" id="contact">
           <b className="footer-title">Contact us</b>
-
-          {tel ? (
-            <a href={tel}>
-              <Phone size={16} /> {SITE.phone}
-            </a>
-          ) : (
-            <span className="footer-line">
-              <Phone size={16} /> {SITE.phone}
-            </span>
-          )}
 
           <a href={`mailto:${SITE.email}`}>
             <Mail size={16} /> {SITE.email}

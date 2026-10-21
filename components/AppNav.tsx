@@ -9,6 +9,7 @@ import {
   FileText,
   HeartPulse,
   Home,
+  Stethoscope,
   Menu,
   Moon,
   Plus,
@@ -16,7 +17,7 @@ import {
   UserRound,
   X,
 } from "lucide-react";
-import { UserButton } from "@clerk/nextjs";
+import { UserButton, useUser } from "@clerk/nextjs";
 import FamilySwitcher from "./FamilySwitcher";
 
 const items = [
@@ -29,6 +30,10 @@ const items = [
 
 export default function AppNav() {
   const path = usePathname();
+  const { user } = useUser();
+  // Cosmetic only: the real protection is on the server (see lib/server/doctor.ts).
+  const isDoctor = (user?.publicMetadata as { role?: string } | undefined)?.role === "doctor";
+  const navItems = isDoctor ? [...items, ["/doctor", "Doctor Panel", Stethoscope] as const] : items;
   const [dark, setDark] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false); // mobile / tablet drawer
 
@@ -156,7 +161,7 @@ export default function AppNav() {
         <div className="nav-label">Care space</div>
 
         <nav className="nav-list">
-          {items.map(([href, label, Icon]) => (
+          {navItems.map(([href, label, Icon]) => (
             <Link
               key={href}
               href={href}
@@ -226,7 +231,7 @@ export default function AppNav() {
         </div>
 
         <nav className="nav-list">
-          {items.map(([href, label, Icon]) => (
+          {navItems.map(([href, label, Icon]) => (
             <Link
               key={href}
               href={href}

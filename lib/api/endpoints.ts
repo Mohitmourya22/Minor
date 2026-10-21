@@ -14,5 +14,6 @@ export const API_ENDPOINTS = {
   bookings: { latest: "/bookings/latest", create: "/bookings" },
   payments: { order: "/payments/order", verify: "/payments/verify", submit: "/payments/submit" },
   pricing: "/pricing",
+  doctor: { bookings: "/doctor/bookings", confirm: "/doctor/confirm" },
   ai: { chat: "/ai/chat", healthSummary: "/ai/health-summary" },
 } as const;

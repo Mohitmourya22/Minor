@@ -5,7 +5,8 @@ import type { Booking, CategoryId, MedicalDocument, Profile, Vital } from "@/lib
 
 export interface ProfileRow {
   user_id: string; name: string; age: string; gender: string; phone: string;
-  emergency: string; address: string; type: "Elderly" | "General Public";
+  emergency_name?: string; emergency_phone?: string;
+  state?: string; city?: string; pincode?: string; address: string; type: "Elderly" | "General Public";
   caregiver_name: string; caregiver_phone: string;
 }
 export interface VitalRow {
@@ -20,14 +21,15 @@ export interface BookingRow {
   patient_id: string | null; patient_name: string | null; attachments: string[];
   status: string; payment_status: "unpaid" | "submitted" | "paid"; amount_paise: number;
   razorpay_order_id: string | null; razorpay_payment_id: string | null;
-  doctor_notified_at: string | null; utr?: string | null;
+  doctor_notified_at: string | null; utr?: string | null; whatsapp?: string | null;
 }
 
 /* ---------- database -> API (matches lib/types.ts) ---------- */
 
 export const toProfile = (r: ProfileRow): Profile => ({
-  name: r.name, age: r.age, gender: r.gender, phone: r.phone, emergency: r.emergency,
-  address: r.address, type: r.type, caregiverName: r.caregiver_name, caregiverPhone: r.caregiver_phone,
+  name: r.name, age: r.age, gender: r.gender, phone: r.phone,
+  emergencyName: r.emergency_name ?? "", emergencyPhone: r.emergency_phone ?? "",
+  state: r.state ?? "", city: r.city ?? "", pincode: r.pincode ?? "", address: r.address, type: r.type, caregiverName: r.caregiver_name, caregiverPhone: r.caregiver_phone,
 });
 
 export const toVital = (r: VitalRow): Vital => ({

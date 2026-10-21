@@ -6,8 +6,8 @@ export const SITE = {
   name: "AayuMarg",
   tagline: "We care",
 
-  // Keep the +91- format. A real number becomes a tap-to-call link in the footer.
-  phone: "+91-7000698030",
+  // Shown to the patient ONLY after payment (not on the public site).
+  doctorPhone: "+91-7000698030",
 
   email: "info@aayumarg.com",
 

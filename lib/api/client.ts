@@ -53,7 +53,18 @@ export async function apiRequest<T>(endpoint: string, options: RequestOptions = 
     clearTimeout(timer);
   }
 
-  if (!res.ok) throw new ApiError(res.status, "HTTP_ERROR", friendlyMessage(res.status));
+  if (!res.ok) {
+    // Our own API sends short, safe validation messages for 400 / 409; show those to the user.
+    let msg = friendlyMessage(res.status);
+    if (res.status === 400 || res.status === 409) {
+      try {
+        const j = await res.json();
+        const m = j?.error?.message;
+        if (typeof m === "string" && m.length < 300 && !m.startsWith("Invalid fields")) msg = m;
+      } catch { /* keep the generic message */ }
+    }
+    throw new ApiError(res.status, "HTTP_ERROR", msg);
+  }
   if (res.status === 204) return undefined as T;
 
   try {

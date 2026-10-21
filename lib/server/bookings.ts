@@ -40,7 +40,7 @@ export async function createBookingForUser(userId: string, input: BookingInput) 
   const { data: dup } = await existing.order("created_at", { ascending: false }).limit(1).maybeSingle();
   if (dup) {
     const { data: updated, error } = await supabase.from("bookings")
-      .update({ reason: input.reason, attachments: input.attachments ?? [] }).eq("id", dup.id).select().single();
+      .update({ reason: input.reason, attachments: input.attachments ?? [], whatsapp: input.whatsapp ?? null }).eq("id", dup.id).select().single();
     if (error) dbError("booking reuse", error);
     return { row: updated as BookingRow, needsNotify: false };
   }
@@ -56,6 +56,7 @@ export async function createBookingForUser(userId: string, input: BookingInput) 
     reason: input.reason,
     patient_id: input.patientId ?? null,
     patient_name: input.patientName ?? null,
+    whatsapp: input.whatsapp ?? null,
     attachments: input.attachments ?? [],
     amount_paise: doctor.fee_paise,
     status: free ? "Confirmed" : "Awaiting payment",

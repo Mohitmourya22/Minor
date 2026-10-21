@@ -29,7 +29,7 @@ export function buildDoctorMessage(b: BookingRow, patientPhone: string | null) {
   const service = confidential ? "Confidential consultation" : b.service;
   const slot = formatSlot(b.booking_date, b.booking_time.slice(0, 5));
   const patient = b.patient_name || "Patient";
-  const contact = patientPhone || "not provided";
+  const contact = b.whatsapp || patientPhone || "not provided";
   const note = !confidential && b.reason ? b.reason.slice(0, 200) : "";
 
   const body = [
@@ -76,7 +76,8 @@ export async function notifyDoctorEmail(bookingId: string): Promise<void> {
       `Service: ${confidential ? "Confidential consultation" : b.service}`,
       `When: ${formatSlot(b.booking_date, b.booking_time.slice(0, 5))}`,
       `Patient: ${b.patient_name || "Patient"}`,
-      `Contact: ${(profile?.phone as string | undefined) || "not provided"}`,
+      `Patient WhatsApp: ${b.whatsapp || "not provided"}`,
+      `Profile phone: ${(profile?.phone as string | undefined) || "not provided"}`,
       `Amount: ${rupees(b.amount_paise)}`,
       submitted ? `UTR entered by patient: ${b.utr}` : null,
       !confidential && b.reason ? `Note: ${b.reason.slice(0, 200)}` : null,
