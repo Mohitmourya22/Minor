@@ -1,0 +1,1072 @@
+diff --git a/app/api/bookings/route.ts b/app/api/bookings/route.ts
+index 5e413c5..2ba7661 100644
+--- a/app/api/bookings/route.ts
++++ b/app/api/bookings/route.ts
+@@ -1,7 +1,7 @@
+ import { after } from "next/server";
+ import { requireUserId } from "@/lib/server/auth";
+ import { json, route } from "@/lib/server/http";
+-import { assertBookingDateOk, bookingSchema, parseBody } from "@/lib/server/validation";
++import { assertBookingSlotOk, bookingSchema, parseBody } from "@/lib/server/validation";
+ import { createBookingForUser } from "@/lib/server/bookings";
+ import { notifyDoctorEmail } from "@/lib/server/notify";
+ import { toBooking } from "@/lib/server/mappers";
+@@ -14,7 +14,7 @@ import { toBooking } from "@/lib/server/mappers";
+ export const POST = route(async (req) => {
+   const userId = await requireUserId();
+   const input = await parseBody(req, bookingSchema);
+-  assertBookingDateOk(input.date);
++  assertBookingSlotOk(input.date, input.time);
+ 
+   const { row, needsNotify } = await createBookingForUser(userId, input);
+   if (needsNotify) after(() => notifyDoctorEmail(row.id));
+diff --git a/app/api/users/profile/route.ts b/app/api/users/profile/route.ts
+index 6ac268e..a484040 100644
+--- a/app/api/users/profile/route.ts
++++ b/app/api/users/profile/route.ts
+@@ -18,8 +18,9 @@ export const PUT = route(async (req) => {
+ 
+   const { data, error } = await db().from("profiles").upsert({
+     user_id: userId,
+-    name: p.name, age: p.age, gender: p.gender, phone: p.phone, emergency: p.emergency,
+-    address: p.address, type: p.type, caregiver_name: p.caregiverName, caregiver_phone: p.caregiverPhone,
++    name: p.name, age: p.age, gender: p.gender, phone: p.phone,
++    emergency_name: p.emergencyName, emergency_phone: p.emergencyPhone,
++    state: p.state, city: p.city, pincode: p.pincode, address: p.address, type: p.type, caregiver_name: p.caregiverName, caregiver_phone: p.caregiverPhone,
+     updated_at: new Date().toISOString(),
+   }, { onConflict: "user_id" }).select().single();
+ 
+diff --git a/app/booking/page.tsx b/app/booking/page.tsx
+index 5bef2f9..ac5d929 100644
+--- a/app/booking/page.tsx
++++ b/app/booking/page.tsx
+@@ -11,13 +11,14 @@ import UpiPayPanel from '../../components/UpiPayPanel'
+ import { useFamily } from '../../lib/family/FamilyContext'
+ import { bookingLabel } from '../../lib/categories'
+ import ContactSoon from '../../components/ContactSoon'
+-import { isValidWhatsapp } from '../../lib/whatsapp'
++import { checkReason, checkSlot, checkWhatsapp, cleanWhatsapp, earliestSlot, formatEarliest, todayIst, MAX_REASON_WORDS } from '../../lib/validation/booking'
++import { wordCount } from '../../lib/validation/common'
+ import type { Booking, CategoryId } from '../../lib/types'
+ 
+ const initial = (): Booking => ({
+   service: 'Doctor Consultation',
+-  date: new Date().toISOString().slice(0, 10),
+-  time: '10:00',
++  date: earliestSlot().date,
++  time: earliestSlot().time,
+   reason: 'Routine checkup',
+   status: 'Confirmed',
+ })
+@@ -48,9 +49,10 @@ function BookingPage() {
+ 
+   const u = (k: keyof Booking, v: string) => setB({ ...b, [k]: v })
+   const save = async () => {
+-    if (!isValidWhatsapp(whatsapp)) { setWaError('Please enter a valid WhatsApp number so the doctor can reach you.'); return }
++    const problem = checkSlot(b.date, b.time) || checkWhatsapp(whatsapp) || checkReason(b.reason)
++    if (problem) { setWaError(problem); return }
+     setWaError(null)
+-    const created = await book({ ...b, patientId: active.id, patientName: active.name, whatsapp: whatsapp.trim() })
++    const created = await book({ ...b, patientId: active.id, patientName: active.name, whatsapp: cleanWhatsapp(whatsapp) })
+     if (!created) return
+     if (created.paymentStatus === 'unpaid') setShowPay(true)
+     else setSaved(true)
+@@ -87,7 +89,7 @@ function BookingPage() {
+               <div className="row">
+                 <div className="field">
+                   <label htmlFor="b-date">Date</label>
+-                  <input id="b-date" type="date" value={b.date} onChange={e => u('date', e.target.value)} />
++                  <input id="b-date" type="date" value={b.date} min={todayIst()} onChange={e => u('date', e.target.value)} />
+                 </div>
+                 <div className="field">
+                   <label htmlFor="b-time">Time</label>
+@@ -96,13 +98,18 @@ function BookingPage() {
+               </div>
+               <div className="field">
+                 <label htmlFor="b-whatsapp">Your WhatsApp number</label>
+-                <input id="b-whatsapp" type="tel" inputMode="tel" autoComplete="tel" placeholder="e.g. +91 98765 43210"
+-                  value={whatsapp} onChange={e => setWhatsapp(e.target.value)} />
++                <input id="b-whatsapp" type="tel" inputMode="numeric" autoComplete="tel" placeholder="10-digit mobile number" maxLength={14}
++                  value={whatsapp} onChange={e => setWhatsapp(e.target.value.replace(/[^\d+ ]/g, ''))} />
++                {whatsapp && checkWhatsapp(whatsapp) && <small role="alert" style={{ color: 'var(--error, #b3261e)' }}>{checkWhatsapp(whatsapp)}</small>}
+               </div>
+               <div className="field">
+                 <label htmlFor="b-reason">Reason</label>
+-                <textarea id="b-reason" value={b.reason} onChange={e => u('reason', e.target.value)} placeholder="Reason for visit" />
++                <textarea id="b-reason" value={b.reason} onChange={e => u('reason', e.target.value)} placeholder="Reason for visit" maxLength={1500} />
++                <small className="muted" style={wordCount(b.reason) > MAX_REASON_WORDS ? { color: 'var(--error, #b3261e)' } : undefined}>
++                  {wordCount(b.reason)} / {MAX_REASON_WORDS} words{checkReason(b.reason) ? ` — ${checkReason(b.reason)}` : ''}
++                </small>
+               </div>
++              <small className="muted">Earliest available slot: {formatEarliest()} (IST). Bookings need at least 2 hours' notice.</small>
+               {(waError || saveError) && <div className="error-state" role="alert">{waError || saveError}</div>}
+               <button className="btn btn-primary" onClick={save} disabled={saving}>
+                 {saving ? 'Booking…' : 'Book now'}
+diff --git a/app/profile/page.tsx b/app/profile/page.tsx
+index e657a48..cf980d7 100644
+--- a/app/profile/page.tsx
++++ b/app/profile/page.tsx
+@@ -7,22 +7,34 @@ import { useUser } from '@clerk/nextjs'
+ import { Save } from 'lucide-react'
+ import { useEffect, useState } from 'react'
+ import type { Profile } from '../../lib/types'
++import { OTHER, STATES, citiesOf, cleanProfile, validateProfile, type ProfileErrors } from '../../lib/validation/profile'
++import { GENDERS } from '../../lib/validation/common'
+ 
+ const blank: Profile = {
+-  name: '', age: '', gender: '', phone: '', emergency: '', address: '',
++  name: '', age: '', gender: '', phone: '', emergencyName: '', emergencyPhone: '',
++  state: '', city: '', pincode: '', address: '',
+   type: 'Elderly', caregiverName: '', caregiverPhone: '',
+ }
+ 
++/** Live input filters: the wrong kind of character simply cannot be typed. */
++const onlyLetters = (v: string) => v.replace(/[^\p{L}\p{M} ]/gu, '').replace(/ {2,}/g, ' ').slice(0, 50)
++const onlyDigits = (max: number) => (v: string) => v.replace(/\D/g, '').slice(0, max)
++
+ export default function Page() {
+   const { user } = useUser()
+   const { profile, status, error, reload, save, saving, saveError } = useProfile()
+   const [p, setP] = useState<Profile>(blank)
+   const [saved, setSaved] = useState(false)
++  const [errs, setErrs] = useState<ProfileErrors>({})
++  const [touched, setTouched] = useState<Record<string, boolean>>({})
++  const [cityOther, setCityOther] = useState(false)
+ 
+   // Fill the form once the profile has loaded (or default the name from Clerk).
+   useEffect(() => {
+     if (status !== 'success') return
+-    setP(profile ?? { ...blank, name: user?.fullName || user?.firstName || '' })
++    const base = profile ? { ...blank, ...profile } : { ...blank, name: onlyLetters(user?.fullName || user?.firstName || '') }
++    setP(base)
++    setCityOther(!!base.state && !!base.city && !citiesOf(base.state).includes(base.city))
+   }, [status, profile, user?.fullName, user?.firstName])
+ 
+   useEffect(() => {
+@@ -31,8 +43,39 @@ export default function Page() {
+     return () => clearTimeout(t)
+   }, [saved])
+ 
+-  const update = (k: keyof Profile, v: string) => setP({ ...p, [k]: v })
+-  const onSave = async () => { if (await save(p)) setSaved(true) }
++  const update = (k: keyof Profile, v: string) => {
++    const next = { ...p, [k]: v }
++    setP(next)
++    setErrs(validateProfile(next))
++  }
++  const blur = (k: string) => setTouched(t => ({ ...t, [k]: true }))
++  const err = (k: keyof ProfileErrors) => (touched[k] || touched.__all ? errs[k] : undefined)
++
++  const onState = (v: string) => {
++    const next = { ...p, state: v, city: '' }
++    setCityOther(false)
++    setP(next); setErrs(validateProfile(next))
++  }
++  const onCity = (v: string) => {
++    if (v === OTHER) { setCityOther(true); update('city', ''); return }
++    setCityOther(false); update('city', v)
++  }
++
++  const onSave = async () => {
++    const cleaned = cleanProfile(p)
++    const found = validateProfile(cleaned)
++    setErrs(found)
++    setTouched({ __all: true })
++    if (Object.keys(found).length) {
++      const first = Object.keys(found)[0]
++      document.getElementById(`pf-${first}`)?.focus()
++      return
++    }
++    if (await save(cleaned)) setSaved(true)
++  }
++
++  const Err = ({ k }: { k: keyof ProfileErrors }) =>
++    err(k) ? <small role="alert" style={{ color: 'var(--error, #b3261e)' }}>{err(k)}</small> : null
+ 
+   return (
+     <>
+@@ -41,8 +84,8 @@ export default function Page() {
+         <div className="eyebrow">Account &amp; care details</div>
+         <h1 className="h1">User registration &amp; profile</h1>
+         <p className="sub">
+-          Keep the essential information simple. Your details are stored through the AayuMarg
+-          service layer (demo mode keeps them in this browser only).
++          Keep the essential information simple. Your details are stored securely and are visible only to you
++          and the AayuMarg care team.
+         </p>
+ 
+         <div className="card" style={{ marginTop: 24 }}>
+@@ -53,36 +96,51 @@ export default function Page() {
+               <div className="row">
+                 <div className="field">
+                   <label htmlFor="pf-name">Name</label>
+-                  <input id="pf-name" value={p.name} onChange={e => update('name', e.target.value)} placeholder="Full name" />
++                  <input id="pf-name" value={p.name} maxLength={50} autoComplete="name" placeholder="Full name (letters only)"
++                    onChange={e => update('name', onlyLetters(e.target.value))} onBlur={() => blur('name')} aria-invalid={!!err('name')} />
++                  <Err k="name" />
+                 </div>
+                 <div className="field">
+                   <label htmlFor="pf-age">Age</label>
+-                  <input id="pf-age" type="number" value={p.age} onChange={e => update('age', e.target.value)} placeholder="Age" />
++                  <input id="pf-age" inputMode="numeric" value={p.age} maxLength={3} placeholder="1 – 150"
++                    onChange={e => update('age', onlyDigits(3)(e.target.value))} onBlur={() => blur('age')} aria-invalid={!!err('age')} />
++                  <Err k="age" />
+                 </div>
+               </div>
+ 
+               <div className="row">
+                 <div className="field">
+                   <label htmlFor="pf-gender">Gender</label>
+-                  <select id="pf-gender" value={p.gender} onChange={e => update('gender', e.target.value)}>
++                  <select id="pf-gender" value={p.gender} onChange={e => update('gender', e.target.value)} onBlur={() => blur('gender')}>
+                     <option value="">Select</option>
+-                    <option>Female</option>
+-                    <option>Male</option>
+-                    <option>Other</option>
+-                    <option>Prefer not to say</option>
++                    {GENDERS.map(g => <option key={g}>{g}</option>)}
+                   </select>
++                  <Err k="gender" />
+                 </div>
+                 <div className="field">
+                   <label htmlFor="pf-phone">Phone</label>
+-                  <input id="pf-phone" value={p.phone} onChange={e => update('phone', e.target.value)} placeholder="Phone number" />
++                  <input id="pf-phone" type="tel" inputMode="numeric" value={p.phone} maxLength={10} autoComplete="tel-national" placeholder="10-digit mobile number"
++                    onChange={e => update('phone', onlyDigits(10)(e.target.value))} onBlur={() => blur('phone')} aria-invalid={!!err('phone')} />
++                  <Err k="phone" />
+                 </div>
+               </div>
+ 
+               <div className="row">
+                 <div className="field">
+-                  <label htmlFor="pf-emergency">Emergency contact</label>
+-                  <input id="pf-emergency" value={p.emergency} onChange={e => update('emergency', e.target.value)} placeholder="Name + phone" />
++                  <label htmlFor="pf-emergencyName">Emergency contact name</label>
++                  <input id="pf-emergencyName" value={p.emergencyName} maxLength={50} placeholder="Name of a close person"
++                    onChange={e => update('emergencyName', onlyLetters(e.target.value))} onBlur={() => blur('emergencyName')} aria-invalid={!!err('emergencyName')} />
++                  <Err k="emergencyName" />
+                 </div>
++                <div className="field">
++                  <label htmlFor="pf-emergencyPhone">Emergency contact number</label>
++                  <input id="pf-emergencyPhone" type="tel" inputMode="numeric" value={p.emergencyPhone} maxLength={10} placeholder="10-digit mobile number"
++                    onChange={e => update('emergencyPhone', onlyDigits(10)(e.target.value))} onBlur={() => blur('emergencyPhone')} aria-invalid={!!err('emergencyPhone')} />
++                  <Err k="emergencyPhone" />
++                </div>
++              </div>
++
++              <div className="row">
+                 <div className="field">
+                   <label htmlFor="pf-type">User type</label>
+                   <select id="pf-type" value={p.type} onChange={e => update('type', e.target.value as Profile['type'])}>
+@@ -90,24 +148,69 @@ export default function Page() {
+                     <option>General Public</option>
+                   </select>
+                 </div>
++                <div className="field">
++                  <label htmlFor="pf-country">Country</label>
++                  <input id="pf-country" value="India" disabled readOnly />
++                </div>
++              </div>
++
++              <div className="row">
++                <div className="field">
++                  <label htmlFor="pf-state">State / UT</label>
++                  <select id="pf-state" value={p.state} onChange={e => onState(e.target.value)} onBlur={() => blur('state')}>
++                    <option value="">Select state</option>
++                    {STATES.map(s => <option key={s}>{s}</option>)}
++                  </select>
++                  <Err k="state" />
++                </div>
++                <div className="field">
++                  <label htmlFor="pf-city">City</label>
++                  <select id="pf-city" value={cityOther ? OTHER : p.city} disabled={!p.state}
++                    onChange={e => onCity(e.target.value)} onBlur={() => blur('city')}>
++                    <option value="">{p.state ? 'Select city' : 'Select state first'}</option>
++                    {citiesOf(p.state).map(c => <option key={c}>{c}</option>)}
++                    {p.state && <option value={OTHER}>Other (not in list)</option>}
++                  </select>
++                  {cityOther && (
++                    <input id="pf-city-other" value={p.city} maxLength={60} placeholder="Type your city / town" style={{ marginTop: 8 }}
++                      onChange={e => update('city', onlyLetters(e.target.value))} onBlur={() => blur('city')} />
++                  )}
++                  <Err k="city" />
++                </div>
++              </div>
++
++              <div className="row">
++                <div className="field">
++                  <label htmlFor="pf-pincode">Pincode</label>
++                  <input id="pf-pincode" inputMode="numeric" value={p.pincode} maxLength={6} autoComplete="postal-code" placeholder="6-digit pincode"
++                    onChange={e => update('pincode', onlyDigits(6)(e.target.value))} onBlur={() => blur('pincode')} aria-invalid={!!err('pincode')} />
++                  <Err k="pincode" />
++                </div>
++                <div className="field" />
+               </div>
+ 
+               <div className="field">
+-                <label htmlFor="pf-address">Address</label>
+-                <textarea id="pf-address" value={p.address} onChange={e => update('address', e.target.value)} placeholder="Home address" />
++                <label htmlFor="pf-address">Address (house no., street, landmark)</label>
++                <textarea id="pf-address" value={p.address} maxLength={200} placeholder="House / flat no., street, area, landmark"
++                  onChange={e => update('address', e.target.value.replace(/[^\p{L}\p{M}\p{N} ,.\-/#()&'’:]/gu, ''))} onBlur={() => blur('address')} aria-invalid={!!err('address')} />
++                <Err k="address" />
+               </div>
+ 
+               {p.type === 'Elderly' && (
+                 <div className="card" style={{ background: 'var(--card-soft)' }}>
+-                  <div className="card-title">Elderly-specific</div>
++                  <div className="card-title">Elderly-specific (optional)</div>
+                   <div className="row" style={{ marginTop: 14 }}>
+                     <div className="field">
+-                      <label htmlFor="pf-cg-name">Family / caregiver name</label>
+-                      <input id="pf-cg-name" value={p.caregiverName} onChange={e => update('caregiverName', e.target.value)} placeholder="Caregiver name" />
++                      <label htmlFor="pf-caregiverName">Family / caregiver name</label>
++                      <input id="pf-caregiverName" value={p.caregiverName} maxLength={50} placeholder="Caregiver name"
++                        onChange={e => update('caregiverName', onlyLetters(e.target.value))} onBlur={() => blur('caregiverName')} />
++                      <Err k="caregiverName" />
+                     </div>
+                     <div className="field">
+-                      <label htmlFor="pf-cg-phone">Family / caregiver phone</label>
+-                      <input id="pf-cg-phone" value={p.caregiverPhone} onChange={e => update('caregiverPhone', e.target.value)} placeholder="Caregiver phone" />
++                      <label htmlFor="pf-caregiverPhone">Family / caregiver phone</label>
++                      <input id="pf-caregiverPhone" type="tel" inputMode="numeric" value={p.caregiverPhone} maxLength={10} placeholder="10-digit mobile number"
++                        onChange={e => update('caregiverPhone', onlyDigits(10)(e.target.value))} onBlur={() => blur('caregiverPhone')} />
++                      <Err k="caregiverPhone" />
+                     </div>
+                   </div>
+                 </div>
+diff --git a/app/vitals/page.tsx b/app/vitals/page.tsx
+index 3a25aa6..9f8386f 100644
+--- a/app/vitals/page.tsx
++++ b/app/vitals/page.tsx
+@@ -6,8 +6,24 @@ import { useVitals } from '../../lib/hooks/useVitals'
+ import { HeartPulse, Save, Plus } from 'lucide-react'
+ import { useEffect, useState } from 'react'
+ import type { Vital } from '../../lib/types'
++import { LIMITS, validateVital, type VitalErrors } from '../../lib/validation/vitals'
++import { todayIst } from '../../lib/validation/booking'
+ 
+-const today = () => new Date().toISOString().slice(0, 10)
++const today = () => todayIst()
++const yearAgo = () => { const d = new Date(`${todayIst()}T00:00:00Z`); d.setUTCFullYear(d.getUTCFullYear() - 1); return d.toISOString().slice(0, 10) }
++
++/** Typing filters: only digits (and one decimal point / one slash where it makes sense). */
++const whole = (v: string) => v.replace(/\D/g, '').slice(0, 3)
++const decimal = (v: string) => {
++  const c = v.replace(/[^\d.]/g, '')
++  const [a, ...rest] = c.split('.')
++  return (rest.length ? `${a.slice(0, 3)}.${rest.join('').slice(0, 1)}` : a.slice(0, 3))
++}
++const bpFilter = (v: string) => {
++  const c = v.replace(/[^\d/]/g, '')
++  const [a, ...rest] = c.split('/')
++  return rest.length ? `${a.slice(0, 3)}/${rest.join('').replace(/\//g, '').slice(0, 3)}` : a.slice(0, 3)
++}
+ 
+ export default function Page() {
+   const { vitals, status, error, reload, add, saving, saveError } = useVitals()
+@@ -15,6 +31,11 @@ export default function Page() {
+     date: today(), bp: '120/80', hr: '72', spo2: '98', temp: '98.6', sugar: '95', weight: '65',
+   })
+   const [saved, setSaved] = useState(false)
++  const [touched, setTouched] = useState<Record<string, boolean>>({})
++  const errs: VitalErrors = validateVital(form, today())
++  const show = (k: keyof Vital) => (touched[k] || touched.__all ? errs[k] : undefined)
++  const blur = (k: string) => setTouched(t => ({ ...t, [k]: true }))
++  const Err = ({ k }: { k: keyof Vital }) => show(k) ? <small role="alert" style={{ color: 'var(--error, #b3261e)' }}>{show(k)}</small> : null
+ 
+   useEffect(() => {
+     if (!saved) return
+@@ -23,7 +44,12 @@ export default function Page() {
+   }, [saved])
+ 
+   const u = (k: keyof Vital, v: string) => setForm({ ...form, [k]: v })
+-  const save = async () => { if (await add(form)) setSaved(true) }
++  const save = async () => {
++    setTouched({ __all: true })
++    if (Object.keys(validateVital(form, today())).length) return
++    const clean: Vital = { ...form, bp: form.bp.replace(/\s/g, ''), hr: form.hr.trim(), spo2: form.spo2.trim(), temp: form.temp.trim(), sugar: form.sugar.trim(), weight: form.weight.trim() }
++    if (await add(clean)) setSaved(true)
++  }
+ 
+   return (
+     <>
+@@ -43,38 +69,48 @@ export default function Page() {
+             <div className="form">
+               <div className="field">
+                 <label htmlFor="v-date">Date</label>
+-                <input id="v-date" type="date" value={form.date} onChange={e => u('date', e.target.value)} />
++                <input id="v-date" type="date" value={form.date} min={yearAgo()} max={today()} onChange={e => u('date', e.target.value)} onBlur={() => blur('date')} />
++                <Err k="date" />
+               </div>
+               <div className="row">
+                 <div className="field">
+-                  <label htmlFor="v-bp">Blood pressure</label>
+-                  <input id="v-bp" value={form.bp} onChange={e => u('bp', e.target.value)} placeholder="120/80" />
++                  <label htmlFor="v-bp">Blood pressure (mmHg)</label>
++                  <input id="v-bp" inputMode="numeric" value={form.bp} onChange={e => u('bp', bpFilter(e.target.value))} onBlur={() => blur('bp')} placeholder="120/80" aria-invalid={!!show('bp')} />
++                  <Err k="bp" />
+                 </div>
+                 <div className="field">
+                   <label htmlFor="v-hr">Heart rate (bpm)</label>
+-                  <input id="v-hr" value={form.hr} onChange={e => u('hr', e.target.value)} placeholder="72" />
++                  <input id="v-hr" inputMode="numeric" value={form.hr} onChange={e => u('hr', whole(e.target.value))} onBlur={() => blur('hr')} placeholder="72" aria-invalid={!!show('hr')} />
++                  <Err k="hr" />
+                 </div>
+               </div>
+               <div className="row">
+                 <div className="field">
+                   <label htmlFor="v-spo2">SpO₂ (%)</label>
+-                  <input id="v-spo2" value={form.spo2} onChange={e => u('spo2', e.target.value)} placeholder="98" />
++                  <input id="v-spo2" inputMode="numeric" value={form.spo2} onChange={e => u('spo2', whole(e.target.value))} onBlur={() => blur('spo2')} placeholder="98" aria-invalid={!!show('spo2')} />
++                  <Err k="spo2" />
+                 </div>
+                 <div className="field">
+                   <label htmlFor="v-temp">Temperature (°F)</label>
+-                  <input id="v-temp" value={form.temp} onChange={e => u('temp', e.target.value)} placeholder="98.6" />
++                  <input id="v-temp" inputMode="decimal" value={form.temp} onChange={e => u('temp', decimal(e.target.value))} onBlur={() => blur('temp')} placeholder="98.6" aria-invalid={!!show('temp')} />
++                  <Err k="temp" />
+                 </div>
+               </div>
+               <div className="row">
+                 <div className="field">
+                   <label htmlFor="v-sugar">Blood sugar (mg/dL)</label>
+-                  <input id="v-sugar" value={form.sugar} onChange={e => u('sugar', e.target.value)} placeholder="95" />
++                  <input id="v-sugar" inputMode="decimal" value={form.sugar} onChange={e => u('sugar', decimal(e.target.value))} onBlur={() => blur('sugar')} placeholder="95" aria-invalid={!!show('sugar')} />
++                  <Err k="sugar" />
+                 </div>
+                 <div className="field">
+                   <label htmlFor="v-weight">Weight (kg)</label>
+-                  <input id="v-weight" value={form.weight} onChange={e => u('weight', e.target.value)} placeholder="65" />
++                  <input id="v-weight" inputMode="decimal" value={form.weight} onChange={e => u('weight', decimal(e.target.value))} onBlur={() => blur('weight')} placeholder="65" aria-invalid={!!show('weight')} />
++                  <Err k="weight" />
+                 </div>
+               </div>
++              <small className="muted">
++                Allowed: BP {LIMITS.sys.min}–{LIMITS.sys.max}/{LIMITS.dia.min}–{LIMITS.dia.max} · HR {LIMITS.hr.min}–{LIMITS.hr.max} · SpO₂ {LIMITS.spo2.min}–{LIMITS.spo2.max}% · Temp {LIMITS.temp.min}–{LIMITS.temp.max}°F · Sugar {LIMITS.sugar.min}–{LIMITS.sugar.max} · Weight {LIMITS.weight.min}–{LIMITS.weight.max} kg
++              </small>
+               {saveError && <div className="error-state" role="alert">{saveError}</div>}
+               <button className="btn btn-primary" onClick={save} disabled={saving}>
+                 <Save size={17} />
+diff --git a/components/BookingCategories.tsx b/components/BookingCategories.tsx
+index d2bfdd2..fe591ea 100644
+--- a/components/BookingCategories.tsx
++++ b/components/BookingCategories.tsx
+@@ -8,7 +8,8 @@ import { uploadDocuments } from "@/lib/services/documents.service";
+ import { getFees } from "@/lib/services/pricing.service";
+ import UpiPayPanel from "@/components/UpiPayPanel";
+ import ContactSoon from "@/components/ContactSoon";
+-import { isValidWhatsapp } from "@/lib/whatsapp";
++import { checkReason, checkSlot, checkWhatsapp, cleanWhatsapp, earliestSlot, formatEarliest, todayIst, MAX_REASON_WORDS } from "@/lib/validation/booking";
++import { wordCount } from "@/lib/validation/common";
+ import type { Booking, CategoryId } from "@/lib/types";
+ 
+ const MAX_BYTES = 4 * 1024 * 1024; // matches the server limit (Vercel rejects bigger uploads)
+@@ -62,8 +63,8 @@ function OpdModal({
+   category, book, saving, saveError, onClose, onBooked,
+ }: { category: CareCategory; book: Props["book"]; saving: boolean; saveError: string | null; onClose: () => void; onBooked?: () => void }) {
+   const { active } = useFamily();
+-  const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
+-  const [time, setTime] = useState("10:00");
++  const [date, setDate] = useState(() => earliestSlot().date);
++  const [time, setTime] = useState(() => earliestSlot().time);
+   const [reason, setReason] = useState("");
+   const [whatsapp, setWhatsapp] = useState("");
+   const [files, setFiles] = useState<File[]>([]);
+@@ -106,7 +107,8 @@ function OpdModal({
+   async function submit(e: React.FormEvent) {
+     e.preventDefault();
+     setLocalError(null);
+-    if (!isValidWhatsapp(whatsapp)) { setLocalError("Please enter a valid WhatsApp number so the doctor can reach you."); return; }
++    const problem = checkSlot(date, time) || checkWhatsapp(whatsapp) || checkReason(reason);
++    if (problem) { setLocalError(problem); return; }
+     try {
+       if (files.length) await uploadDocuments(files);
+     } catch (err) {
+@@ -118,7 +120,7 @@ function OpdModal({
+       date, time, reason: reason.trim() || "OPD consultation", status: "Confirmed",
+       patientId: active.id, patientName: active.name,
+       attachments: files.map((f) => f.name),
+-      whatsapp: whatsapp.trim(),
++      whatsapp: cleanWhatsapp(whatsapp),
+     });
+     if (created) {
+       if (created.paymentStatus === "unpaid" && created.id) setPayBooking(created);
+@@ -158,7 +160,7 @@ function OpdModal({
+             <div className="row">
+               <div className="field">
+                 <label htmlFor="o-date">Date</label>
+-                <input id="o-date" type="date" required value={date} onChange={(e) => setDate(e.target.value)} />
++                <input id="o-date" type="date" required value={date} min={todayIst()} onChange={(e) => setDate(e.target.value)} />
+               </div>
+               <div className="field">
+                 <label htmlFor="o-time">Time</label>
+@@ -167,13 +169,17 @@ function OpdModal({
+             </div>
+             <div className="field">
+               <label htmlFor="o-whatsapp">Your WhatsApp number</label>
+-              <input id="o-whatsapp" type="tel" inputMode="tel" required autoComplete="tel" placeholder="e.g. +91 98765 43210"
+-                value={whatsapp} onChange={(e) => setWhatsapp(e.target.value)} />
++              <input id="o-whatsapp" type="tel" inputMode="numeric" required autoComplete="tel" placeholder="10-digit mobile number" maxLength={14}
++                value={whatsapp} onChange={(e) => setWhatsapp(e.target.value.replace(/[^\d+ ]/g, ""))} />
++              {whatsapp && checkWhatsapp(whatsapp) && <small role="alert" style={{ color: "var(--error, #b3261e)" }}>{checkWhatsapp(whatsapp)}</small>}
+               <small className="muted">Shared only with the doctor, to contact you about this booking.</small>
+             </div>
+             <div className="field">
+               <label htmlFor="o-reason">What would you like help with?</label>
+-              <textarea id="o-reason" value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Optional — a short note for the doctor" />
++              <textarea id="o-reason" value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Optional — a short note for the doctor" maxLength={1500} />
++              <small className="muted" style={wordCount(reason) > MAX_REASON_WORDS ? { color: "var(--error, #b3261e)" } : undefined}>
++                {wordCount(reason)} / {MAX_REASON_WORDS} words{checkReason(reason) ? ` — ${checkReason(reason)}` : ""}
++              </small>
+             </div>
+ 
+             <div className="field">
+@@ -204,6 +210,7 @@ function OpdModal({
+               <small className="muted">PDF, JPG, PNG or WebP · up to 4 MB each · max 6 files</small>
+             </div>
+ 
++            <small className="muted">Earliest available slot: {formatEarliest()} (IST). Bookings need at least 2 hours' notice.</small>
+             {err && <div className="error-state" role="alert">{err}</div>}
+             {fee ? (
+               <small className="muted">Consultation fee ₹{fee}. You pay by UPI on the next step.</small>
+diff --git a/lib/api/client.ts b/lib/api/client.ts
+index ea253e8..5b56a9e 100644
+--- a/lib/api/client.ts
++++ b/lib/api/client.ts
+@@ -53,7 +53,18 @@ export async function apiRequest<T>(endpoint: string, options: RequestOptions =
+     clearTimeout(timer);
+   }
+ 
+-  if (!res.ok) throw new ApiError(res.status, "HTTP_ERROR", friendlyMessage(res.status));
++  if (!res.ok) {
++    // Our own API sends short, safe validation messages for 400 / 409; show those to the user.
++    let msg = friendlyMessage(res.status);
++    if (res.status === 400 || res.status === 409) {
++      try {
++        const j = await res.json();
++        const m = j?.error?.message;
++        if (typeof m === "string" && m.length < 300 && !m.startsWith("Invalid fields")) msg = m;
++      } catch { /* keep the generic message */ }
++    }
++    throw new ApiError(res.status, "HTTP_ERROR", msg);
++  }
+   if (res.status === 204) return undefined as T;
+ 
+   try {
+diff --git a/lib/data/india-locations.json b/lib/data/india-locations.json
+new file mode 100644
+index 0000000..21efba2
+--- /dev/null
++++ b/lib/data/india-locations.json
+@@ -0,0 +1 @@
++{"Andaman and Nicobar Islands":["Bamboo Flat","Nicobar","Port Blair","South Andaman"],"Andhra Pradesh":["Addanki","Adoni","Akasahebpet","Akividu","Akkarampalle","Amalapuram","Amudalavalasa","Anakapalle","Anantapur","Atmakur","Attili","Avanigadda","Badvel","Banganapalle","Bapatla","Betamcherla","Bhattiprolu","Bhimavaram","Bhimunipatnam","Bobbili","Challapalle","Chemmumiahpet","Chilakalurupet","Chinnachowk","Chipurupalle","Chirala","Chittoor","Chodavaram","Cuddapah","Cumbum","Darsi","Dharmavaram","Dhone","Diguvametta","East Godavari","Elamanchili","Ellore","Emmiganur","Erraguntla","Etikoppaka","Gajuwaka","Ganguvada","Gannavaram","Giddalur","Gokavaram","Gorantla","Govindapuram,Chilakaluripet,Guntur","Gudivada","Gudlavalleru","Gudur","Guntakal Junction","Guntur","Hindupur","Ichchapuram","Jaggayyapeta","Jammalamadugu","Kadiri","Kaikalur","Kakinada","Kalyandurg","Kamalapuram","Kandukur","Kanigiri","Kankipadu","Kanuru","Kavali","Kolanukonda","Kondapalle","Korukollu","Kosigi","Kovvur","Krishna","Kuppam","Kurnool","Macherla","Machilipatnam","Madanapalle","Madugula","Mandapeta","Mandasa","Mangalagiri","Markapur","Nagari","Nagireddipalli","Nandigama","Nandikotkur","Nandyal","Narasannapeta","Narasapur","Narasaraopet","Narasingapuram","Narayanavanam","Narsipatnam","Nayudupet","Nellore","Nidadavole","Nuzvid","Ongole","Pakala","Palakollu","Palasa","Palkonda","Pallevada","Palmaner","Parlakimidi","Parvatipuram","Pavuluru","Pedana","pedda nakkalapalem","Peddapuram","Penugonda","Penukonda","Phirangipuram","Pippara","Pithapuram","Polavaram","Ponnur","Ponnuru","Prakasam","Proddatur","Pulivendla","Punganuru","Puttaparthi","Puttur","Rajahmundry","Ramachandrapuram","Ramanayyapeta","Ramapuram","Rampachodavaram","Rayachoti","Rayadrug","Razam","Razampeta","Razole","Renigunta","Repalle","Salur","Samalkot","Sattenapalle","Singarayakonda","Sompeta","Srikakulam","Srisailain","Suluru","Tadepalle","Tadepallegudem","Tadpatri","Tanuku","Tekkali","Tirumala","Tirupati","Tuni","Uravakonda","vadlamuru","Vadlapudi","Venkatagiri","Vepagunta","Vetapalem","Vijayawada","Vinukonda","Visakhapatnam","Vizianagaram","Vizianagaram District","Vuyyuru","West Godavari","Yanam","Yanamalakuduru","Yarada"],"Arunachal Pradesh":["Along","Anjaw","Basar","Bomdila","Changlang","Dibang Valley","East Kameng","East Siang","Hayuliang","Itanagar","Khonsa","Kurung Kumey","Lohit District","Lower Dibang Valley","Lower Subansiri","Margherita","Naharlagun","Pasighat","Tawang","Tezu","Tirap","Upper Siang","Upper Subansiri","West Kameng","West Siang","Ziro"],"Assam":["Abhayapuri","Amguri","Badarpur","Baksa","Barpathar","Barpeta","Barpeta Road","Basugaon","Bihpuriagaon","Bijni","Bilasipara","Bokajan","Bokakhat","Bongaigaon","Cachar","Chabua","Chapar","Chirang","Darrang","Dergaon","Dhekiajuli","Dhemaji","Dhing","Dhubri","Dibrugarh","Digboi","Dima Hasao District","Diphu","Dispur","Duliagaon","Dum Duma","Gauripur","Goalpara","Gohpur","Golaghat","Golakganj","Goshaingaon","Guwahati","Haflong","Hailakandi","Hajo","Hojai","Howli","Jogighopa","Jorhat","Kamrup","Kamrup Metropolitan","Karbi Anglong","Karimganj","Kharupatia","Kokrajhar","Lakhimpur","Lakhipur","Lala","Lumding Railway Colony","Mahur","Maibong","Makum","Mangaldai","Mariani","Moranha","Morigaon","Nagaon","Nahorkatiya","Nalbari","Namrup","Nazira","North Guwahati","North Lakhimpur","Numaligarh","Palasbari","Raha","Rangapara","Rangia","Sapatgram","Sarupathar","Sibsagar","Silapathar","Silchar","Soalkuchi","Sonari","Sonitpur","Sorbhog","Tezpur","Tinsukia","Titabar","Udalguri"],"Bihar":["Amarpur","Araria","Arrah","Arwal","Asarganj","Aurangabad","Bagaha","Bahadurganj","Bairagnia","Baisi","Bakhtiyarpur","Bangaon","Banka","Banmankhi","Bar Bigha","Barauli","Barh","Barhiya","Bariarpur","Baruni","Begusarai","Belsand","Bettiah","Bhabhua","Bhagalpur","Bhagirathpur","Bhawanipur","Bhojpur","Bihar Sharif","Bihariganj","Bikramganj","Birpur","Buddh Gaya","Buxar","Chakia","Chapra","Chhatapur","Colgong","Dalsingh Sarai","Darbhanga","Daudnagar","Dehri","Dhaka","Dighwara","Dinapore","Dumra","Dumraon","Fatwa","Forbesganj","Gaya","Ghoga","Gopalganj","Hajipur","Hilsa","Hisua","Islampur","Jagdispur","Jahanabad","Jamalpur","Jamui","Jaynagar","Jehanabad","Jha-Jha","Jhanjharpur","Jogbani","Kaimur District","Kasba","Katihar","Khagaria","Khagaul","Kharagpur","Khusropur","Kishanganj","Koath","Koelwar","Lakhisarai","Lalganj","Luckeesarai","Madhepura","Madhipura","Madhubani","Maharajgani","Mairwa","Maner","Manihari","Marhaura","Masaurhi Buzurg","Mohiuddinnagar","Mokameh","Monghyr","Mothihari","Munger","Murliganj","Muzaffarpur","Nabinagar","Nalanda","Nasriganj","Naugachhia","Nawada","Nirmali","Pashchim Champaran","Patna","Piro","Pupri","Purba Champaran","Purnia","Rafiganj","Raghunathpur","Rajgir","Ramnagar","Raxaul","Revelganj","Rohtas","Rusera","Sagauli","Saharsa","Samastipur","Saran","Shahbazpur","Shahpur","Sheikhpura","Sheohar","Sherghati","Silao","Sitamarhi","Siwan","Supaul","Teghra","Tekari","Thakurganj","Vaishali","Waris Aliganj"],"Chandigarh":["Chandigarh"],"Chhattisgarh":["Akaltara","Ambagarh Chauki","Ambikapur","Arang","Baikunthpur","Balod","Baloda","Baloda Bazar","Basna","Bastar","Bemetara","Bhanpuri","Bhatapara","Bhatgaon","Bhilai","Bijapur","Bilaspur","Champa","Chhuikhadan","Deori","Dhamtari","Dongargaon","Dongargarh","Durg","Gandai","Gariaband","Gaurela","Gharghoda","Gidam","Jagdalpur","Janjgir","Janjgir-Champa","Jashpur","Jashpurnagar","Junagarh","Kabeerdham","Kanker","Katghora","Kawardha","Khairagarh","Khamharia","Kharod","Kharsia","Kirandul","Kondagaon","Korba","Koriya","Kota","Kotaparh","Kumhari","Kurud","Lormi","Mahasamund","Mungeli","Narayanpur","Narharpur","Pandaria","Pandatarai","Pasan","Patan","Pathalgaon","Pendra","Pithora","Raigarh","Raipur","Raj Nandgaon","Raj-Nandgaon","Ramanuj Ganj","Ratanpur","Sakti","Saraipali","Sarangarh","Seorinarayan","Simga","Surguja","Takhatpur","Umarkot","Uttar Bastar Kanker"],"Dadra and Nagar Haveli and Daman and Diu":["Amli","Dadra","Dadra & Nagar Haveli","Daman","Daman District","Diu","Silvassa"],"Delhi":["Alipur","Bawana","Central Delhi","Delhi","Deoli","East Delhi","Karol Bagh","Najafgarh","Nangloi Jat","Narela","New Delhi","North Delhi","North East Delhi","North West Delhi","Pitampura","Rohini","South Delhi","South West Delhi","West Delhi"],"Goa":["Aldona","Arambol","Baga","Bambolim","Bandora","Benaulim","Calangute","Candolim","Carapur","Cavelossim","Chicalim","Chinchinim","Colovale","Colva","Cortalim","Cuncolim","Curchorem","Curti","Davorlim","Dicholi","Goa Velha","Guirim","Jua","Kankon","Madgaon","Mapuca","Morjim","Mormugao","Navelim","North Goa","Palle","Panaji","Pernem","Ponda","Quepem","Queula","Raia","Saligao","Sancoale","Sanguem","Sanquelim","Sanvordem","Serula","Solim","South Goa","Taleigao","Vagator","Valpoy","Varca","Vasco da Gama"],"Gujarat":["Abrama","Adalaj","Agol","Ahmedabad","Ahwa","Akrund","Amod","Amod,","Amreli","Amroli","Anand","Anjar","Ankleshwar","Babra","Bagasara","Bagasra","Bakharla","Balagam","Balasinor","Balisana","Bamanbore","Banas Kantha","Bandia","Bantva","Bardoli","Bedi","Bhachau","Bhadran","Bhandu","Bhanvad","Bharuch","Bhatha","Bhavnagar","Bhayavadar","Bhildi","Bhojpur Dharampur","Bhuj","Bilimora","Bilkha","Borsad","Botad","Chaklasi","Chalala","Chaloda","Champaner","Chanasma","Chhala","Chhota Udepur","Chikhli","Chotila","Chuda","Dabhoda","Dabhoi","Dahegam","Dahod","Dakor","Damnagar","Dandi","Dangs (India)","Danta","Dayapar","Delvada","Delwada","Detroj","Devbhumi Dwarka","Devgadh Bariya","Dhandhuka","Dhanera","Dhansura","Dharampur","Dharasana","Dhari","Dhasa","Dhola","Dholera","Dholka","Dhoraji","Dhrangadhra","Dhrol","Dhuwaran","Disa","Dohad","Dumkhal","Dungarpur","Dwarka","Gadhada","Gandevi","Gandhidham","Gandhinagar","Gariadhar","Ghodasar","Ghogha","Gir Somnath","Godhra","Gondal","Gorwa","Halenda","Halol","Halvad","Hansot","Harij","Harsol","Hathuran","Himatnagar","Idar","Jakhau","Jalalpore","Jalalpur","Jalia","Jambuda","Jambusar","Jamnagar","Jarod,","Jasdan","Jetalpur","Jetalsar","Jetpur","Jetpur (Navagadh)","Jhalod","Jhulasan","Jodhpur","Jodhpur (Ahmedabad)","Jodia","Jodiya Bandar","Junagadh","Kachchh","Kachholi","Kadi","Kadod","Kalavad","Kalol","Kandla","Kandla port","Kanodar","Kapadvanj","Karamsad","Kariana","Karjan","Kathor","Katpur","Kavant","Kawant","Kayavarohan","Kerwada","Keshod","Khambhalia","Khambhat","Khavda","Kheda","Khedbrahma","Khedoi","Kherali","Kheralu","Kodinar","Kosamba","Kothara","Kotharia","Kukarmunda","Kukma","Kundla","Kutch district","Kutiyana","Ladol","Lakhpat","Lakhtar","Lalpur","Langhnaj","Lathi","Limbdi","Limkheda","Lunavada","Madhavpur Ghed","Madhi","Mahemdavad","Mahesana","Mahisa","Mahudha","Mahuva","Mahuva (Surat)","Malpur","Manavadar","Mandal","Mandvi","Mandvi (Surat)","Mangrol","Mangrol (Junagadh)","Mansa","Meghraj","Mehsana","Mendarda","Mithapur","Modasa","Morbi","Morva (Hadaf)","Morwa","Mundra","Nadiad","Nadiad,","Nagwa","Naldhara","Naliya","Nargol","Narmada","Naroda","Navsari","Nikora","Nizar","Odadar","Okha","Olpad","Paddhari","Padra","Palanpur","Palanswa","Palitana","Paliyad","Paliyad (Bhavnagar)","Palsana","Panch Mahals","Panchmahal district","Pardi","Parnera","Patan","Pavi Jetpur","Petlad","Pipavav","Piplod","Porbandar","Prabhas Patan","Prantij","Radhanpur","Rajkot","Rajpipla","Rajula","Ranavav","Ranpur","Rapar","Reha","Roha","Sabar Kantha","Sachin","Salaya","Samakhiali","Sanand","Sankheda","Sarbhon","Sardoi","Sarkhej","Sathamba","Savarkundla","Savli","Sayla","Shahpur","Shivrajpur","Siddhpur","Sihor","Sikka","Sinor","Sojitra","Songadh","Supedi","Surat","Surendranagar","Sutrapada","Talaja","Tankara","Tapi","Than","Thangadh","Tharad","Thasra","The Dangs","Umarpada","Umrala","Umreth","Un","Una","Unjha","Upleta","Utran","Vadgam","Vadnagar","Vadodara","Vaghodia","Vaghodia INA","Vallabh Vidyanagar","Vallabhipur","Valsad","Vanala","Vansda","Vanthli","Vapi","Vartej","Vasa","Vasavad","Vaso","Vataman","Vejalpur","Veraval","Vijapur","Vinchhiya","Vinchia","Viramgam","Virpur","Visavadar","Visnagar","Vyara","Wadhai","Wadhwan","Waghai","Wankaner"],"Haryana":["Ambala","Asandh","Ateli Mandi","Bahadurgarh","Bara Uchana","Barwala","Bawal","Beri Khas","Bhiwani","Bilaspur","Buriya","Charkhi Dadri","Chhachhrauli","Dabwali","Dharuhera","Ellenabad","Faridabad","Faridabad District","Farrukhnagar","Fatehabad","Fatehabad District","Firozpur Jhirka","Gharaunda","Gohana","Gorakhpur","Gurgaon","Hansi","Hasanpur","Hisar","Hodal","Inda Chhoi","Indri","Jagadhri","Jakhal","Jhajjar","Jind","Kaithal","Kalanaur","Kalanwali","Kanina Khas","Karnal","Kharkhauda","Kheri Sampla","Kurukshetra","Ladwa","Loharu","Maham","Mahendragarh","Mandholi Kalan","Mustafabad","Narayangarh","Narnaul","Narnaund","Narwana","Nilokheri","Nuh","Palwal","Panchkula","Panipat","Pataudi","Pehowa","Pinjaur","Punahana","Pundri","Radaur","Rania","Ratia","Rewari","Rewari District","Rohtak","Safidon","Samalkha","Shadipur Julana","Shahabad","Sirsa","Sohna","Sonipat","Taoru","Thanesar","Tohana","Tosham","Uklana","Yamunanagar"],"Himachal Pradesh":["Arki","Baddi","Banjar","Bilaspur","Chamba","Chaupal","Chowari","Chuari Khas","Dagshai","Dalhousie","Daulatpur","Dera Gopipur","Dharamsala","Gagret","Ghumarwin","Hamirpur","Jawala Mukhi","Jogindarnagar","Jubbal","Jutogh","Kalka","Kangar","Kangra","Kasauli","Kinnaur","Kotkhai","Kotla","Kulu","Kyelang","Lahul and Spiti","Manali","Mandi","Nadaun","Nagar","Nagrota","Nahan","Nalagarh","Palampur","Pandoh","Paonta Sahib","Parwanoo","Rajgarh","Rampur","Rohru","Sabathu","Santokhgarh","Sarahan","Sarka Ghat","Seoni","Shimla","Sirmaur","Solan","Sundarnagar","Theog","Tira Sujanpur","Una","Yol"],"Jammu and Kashmir":["Akhnur","Anantnag","Awantipur","Badgam","Bandipore","Bandipura","Banihal","Baramula","Batoti","Bhadarwah","Bijbehara","Bishnah","Doda","Gandarbal","Ganderbal","Gho Brahmanan de","Hajan","Hiranagar","Jammu","Jaurian","Kathua","Katra","Khaur","Kishtwar","Kud","Kulgam","Kupwara","Ladakh","Magam","Nawanshahr","Noria","Padam","Pahlgam","Parol","Pattan","Pulwama","Punch","Qazigund","Rajaori","Rajauri","Ramban","Ramgarh","Ramnagar","Riasi","Samba","Shupiyan","Sopur","Soyibug","Srinagar","Sumbal","Thang","Thanna Mandi","Tral","Tsrar Sharif","Udhampur","Uri"],"Jharkhand":["Bagra","Barka Kana","Barki Saria","Barwadih","Bhojudih","Bokaro","Bundu","Chaibasa","Chakradharpur","Chakulia","Chandil","Chas","Chatra","Chiria","Daltonganj","Deogarh","Dhanbad","Dhanwar","Dugda","Dumka","Garhwa","Ghatsila","Giridih","Gobindpur","Godda","Gomoh","Gopinathpur","Gua","Gumia","Gumla","Hazaribag","Hazaribagh","Hesla","Husainabad","Jagannathpur","Jamadoba","Jamshedpur","Jamtara","Jasidih","Jharia","Jugsalai","Jumri Tilaiya","Kalikapur","Kandra","Kanke","Katras","Kenduadih","Kharsawan","Khunti","Kodarma","Kuju","Latehar","Lohardaga","Madhupur","Malkera","Manoharpur","Mugma","Mushabani","Neturhat","Nirsa","Noamundi","Pakur","Palamu","Pashchim Singhbhum","patamda","Pathardih","Purba Singhbhum","Ramgarh","Ranchi","Ray","Sahibganj","Saraikela","Sarubera","Sijua","Simdega","Sini","Topchanchi"],"Karnataka":["Afzalpur","Ajjampur","Aland","Alnavar","Alur","Anekal","Ankola","Annigeri","Arkalgud","Arsikere","Athni","Aurad","Badami","Bagalkot","Bagepalli","Bail-Hongal","Ballari","Ballary","Banavar","Bangalore Rural","Bangalore Urban","Bangarapet","Bannur","Bantval","Basavakalyan","Basavana Bagevadi","Belagavi","Belluru","Beltangadi","Belur","Bengaluru","Bhadravati","Bhalki","Bhatkal","Bidar","Bilgi","Birur","Byadgi","Byndoor","Canacona","Challakere","Chamrajnagar","Channagiri","Channapatna","Channarayapatna","Chik Ballapur","Chikkaballapur","Chikkamagaluru","Chiknayakanhalli","Chikodi","Chincholi","Chintamani","Chitapur","Chitradurga","Closepet","Coondapoor","Dakshina Kannada","Dandeli","Davanagere","Devanhalli","Dharwad","Dod Ballapur","French Rocks","Gadag","Gadag-Betageri","Gajendragarh","Gangawati","Gangolli","Gokak","Gokarna","Goribidnur","Gorur","Gubbi","Gudibanda","Guledagudda","Gundlupēt","Gurmatkal","Hadagalli","Haliyal","Hampi","Hangal","Harihar","Harpanahalli","Hassan","Haveri","Heggadadevankote","Hirekerur","Hiriyur","Holalkere","Hole Narsipur","Homnabad","Honavar","Honnali","Hosanagara","Hosangadi","Hosdurga","Hoskote","Hospet","Hubballi","Hukeri","Hungund","Hunsur","Ilkal","Indi","Jagalur","Jamkhandi","Jevargi","Kadur","Kalaburgi","Kalghatgi","Kampli","Kankanhalli","Karkala","Karwar","Kavalur","Kerur","Khanapur","Kodagu","Kodigenahalli","Kodlipet","Kolar","Kollegal","Konanur","Konnur","Koppa","Koppal","Koratagere","Kotturu","Krishnarajpet","Kudachi","Kudligi","Kumsi","Kumta","Kundgol","Kunigal","Kurgunta","Kushalnagar","Kushtagi","Lakshmeshwar","Lingsugur","Londa","Maddagiri","Maddur","Madikeri","Magadi","Mahalingpur","Malavalli","Malpe","Malur","Mandya","Mangaluru","Manipal","Manvi","Mayakonda","Melukote","Mudbidri","Muddebihal","Mudgal","Mudgere","Mudhol","Mulbagal","Mulgund","Mulki","Mundargi","Mundgod","Munirabad","Murudeshwara","Mysuru","Nagamangala","Nanjangud","Narasimharajapura","Naregal","Nargund","Navalgund","Nelamangala","Nyamti","Pangala","Pavugada","Piriyapatna","Ponnampet","Puttur","Rabkavi","Raichur","Ramanagara","Ranibennur","Raybag","Robertsonpet","Ron","Sadalgi","Sagar","Sakleshpur","Sandur","Sanivarsante","Sankeshwar","Sargur","Saundatti","Savanur","Seram","Shahabad","Shahpur","Shiggaon","Shikarpur","Shimoga","Shirhatti","Shorapur","Shrirangapattana","Siddapur","Sidlaghatta","Sindgi","Sindhnur","Sira","Sirsi","Siruguppa","Someshwar","Somvarpet","Sorab","Sravana Belgola","Sringeri","Srinivaspur","Sulya","Suntikoppa","Talikota","Tarikere","Tekkalakote","Terdal","Tiptur","Tirthahalli","Tirumakudal Narsipur","Tumakuru","Turuvekere","Udupi","Ullal","Uttar Kannada","Vadigenhalli","Vijayapura","Virarajendrapet","Wadi","Yadgir","Yelahanka","Yelandur","Yelbarga","Yellapur"],"Kerala":["Adur","Alappuzha","Aluva","Alwaye","Angamali","Aroor","Arukutti","Attingal","Avanoor","Azhikkal","Badagara","Beypore","Changanacheri","Chēlakara","Chengannur","Cherpulassery","Cherthala","Chetwayi","Chittur","Cochin","Dharmadam","Edakkulam","Elur","Erattupetta","Ernakulam","Ferokh","Guruvayur","Idukki","Iringal","Irinjalakuda","Kadakkavoor","Kalamassery","Kalavoor","Kalpatta","Kannangad","Kannavam","Kannur","Kasaragod","Kasaragod District","Kattanam","Kayankulam","Kizhake Chalakudi","Kodungallur","Kollam","Kotamangalam","Kottayam","Kovalam","Kozhikode","Kumbalam","Kunnamangalam","Kunnamkulam","Kunnumma","Kutiatodu","Kuttampuzha","Lalam","Mahē","Malappuram","Manjeri","Manjēshvar","Mannarakkat","Marayur","Mattanur","Mavelikara","Mavoor","Muluppilagadu","Munnar","Muvattupula","Muvattupuzha","Nadapuram","Naduvannur","Nedumangad","Neyyattinkara","Nilēshwar","Ottappalam","Palackattumala","Palakkad district","Palghat","Panamaram","Pappinisshēri","Paravur Tekkumbhagam","Pariyapuram","Pathanamthitta","Pattanamtitta","Payyannur","Perumbavoor","Perumpavur","Perya","Piravam","Ponmana","Ponnani","Punalur","Ramamangalam","Shertallai","Shōranur","Talipparamba","Tellicherry","Thanniyam","Thiruvananthapuram","Thrissur","Thrissur District","Tirur","Tiruvalla","Vaikam","Varkala","Vayalar","Vettur","Wayanad"],"Ladakh":["Kargil","Leh"],"Lakshadweep":["Kavaratti","Lakshadweep"],"Madhya Pradesh":["Agar","Ajaigarh","Akodia","Alampur","Alirajpur","Alot","Amanganj","Amarkantak","Amarpatan","Amarwara","Ambah","Amla","Anjad","Antri","Anuppur","Aron","Ashoknagar","Ashta","Babai","Badarwas","Badnawar","Bag","Bagli","Baihar","Baikunthpur","Bakshwaho","Balaghat","Baldeogarh","Bamna","Bamor Kalan","Bamora","Banda","Barela","Barghat","Bargi","Barhi","Barwani","Basoda","Begamganj","Beohari","Berasia","Betma","Betul","Betul Bazar","Bhabhra","Bhainsdehi","Bhander","Bhanpura","Bhawaniganj","Bhikangaon","Bhind","Bhitarwar","Bhopal","Biaora","Bijawar","Bijrauni","Bodri","Burhanpur","Burhar","Chanderi","Chandia","Chandla","Chhatarpur","Chhindwara","Chichli","Chorhat","Daboh","Dabra","Damoh","Datia","Deori Khas","Depalpur","Dewas","Dhamnod","Dhana","Dhar","Dharampuri","Dindori","Etawa","Gadarwara","Garha Brahman","Garhakota","Gautampura","Ghansor","Gogapur","Gohadi","Govindgarh","Guna","Gurh","Gwalior","Harda","Harda Khas","Harpalpur","Harrai","Harsud","Hatod","Hatta","Hindoria","Hoshangabad","Iawar","Ichhawar","Iklehra","Indore","Isagarh","Itarsi","Jabalpur","Jaisinghnagar","Jaithari","Jamai","Jaora","Jatara","Jawad","Jhabua","Jiran","Jobat","Kailaras","Kaimori","Kannod","Kareli","Karera","Karrapur","Kasrawad","Katangi","Katni","Khachrod","Khailar","Khajuraho Group of Monuments","Khamaria","Khandwa","Khandwa district","Khargapur","Khargone","Khategaon","Khilchipur","Khirkiyan","Khujner","Khurai","Kolaras","Korwai","Kotar","Kothi","Kotma","Kotwa","Kukshi","Kumbhraj","Lahar","Lakhnadon","Leteri","Lodhikheda","Machalpur","Madhogarh","Maheshwar","Mahgawan","Maihar","Majholi","Maksi","Malhargarh","Manasa","Manawar","Mandideep","Mandla","Mandleshwar","Mandsaur","Mangawan","Manpur","Mau","Mauganj","Mihona","Mohgaon","Morar","Morena","Multai","Mundi","Mungaoli","Murwara","Nagda","Nagod","Naigarhi","Nainpur","Namli","Naraini","Narayangarh","Narsimhapur","Narsinghgarh","Narwar","Nasrullahganj","Neemuch","Nepanagar","Orchha","Pachmarhi","Palera","Pali","Panagar","Panara","Pandhana","Pandhurna","Panna","Pansemal","Parasia","Patan","Patharia","Pawai","Petlawad","Piploda","Pithampur","Porsa","Punasa","Raghogarh","Rahatgarh","Raisen","Rajgarh","Rajnagar","Rajpur","Rampura","Ranapur","Ratangarh","Ratlam","Rehli","Rehti","Rewa","Sabalgarh","Sagar","Sailana","Sanawad","Sanchi","Sanwer","Sarangpur","Satna","Satwas","Saugor","Sausar","Sehore","Sendhwa","Seondha","Seoni","Seoni Malwa","Shahdol","Shahgarh","Shahpur","Shahpura","Shajapur","Shamgarh","Sheopur","Shivpuri","Shujalpur","Sidhi","Sihora","Simaria","Singoli","Singrauli","Sirmaur","Sironj","Sitamau","Sohagi","Sohagpur","Sultanpur","Susner","Tal","Talen","Tarana","Tekanpur","Tendukheda","Teonthar","Thandla","Tikamgarh","Tirodi","Udaipura","Ujjain","Ukwa","Umaria","Umaria District","Umri","Unhel","Vidisha","Waraseoni"],"Maharashtra":["Achalpur","Adawad","Agar Panchaitan","Aheri","Ahiri","Ahmadnagar","Ahmadpur","Ahmednagar","Airoli","Ajra","Akalkot","Akkalkot","Akluj","Akola","Akolner","Akot","Akrani","Alandi","Ale","Alibag","Alkuti","Allapalli","Amalner","Amarnath","Ambad","Ambajogai","Ambarnath","Ambegaon","Amgaon","Amravati","Amravati Division","Andheri","Andura","Anjangaon","Anjarle","Anshing","Arag","Arangaon","Ardhapur","Argaon","Artist Village","Arvi","Ashta","Ashti","Asoda","Assaye","Astagaon","Aundh, Satara","Aurangabad","Ausa","Badlapur","Badnapur","Badnera","Bagewadi","Balapur","Balapur, Akola district","Ballalpur","Ballard Estate","Ballarpur","Banda, Maharashtra","Bandra","Baner","Bankot","Baramati","Barsi","Basmat","Basmath","Bavdhan","Bawanbir","Beed","Bhadgaon, Maharashtra","Bhandara","Bhandardara","Bhandup","Bhayandar","Bhigvan","Bhiwandi","Bhiwapur","Bhokar","Bhokardan","Bhoom","Bhor","Bhudgaon","Bhugaon","Bhum","Bhusaval","Bhusawal","Bid","Bijur","Bilashi","Biloli","Boisar","Borgaon Manju","Borivali","Borivli","Brahmapuri","Breach Candy","Buldana","Buldhana","Byculla","Chakan","Chakur","Chalisgaon","Chanda","Chandgad","Chandor","Chandrapur","Chandur","Chandur Bazar","Chausala","Chembur","Chicholi","Chichondi Patil","Chikhli (Buldhana)","Chikhli (Jalna)","Chimur","Chinchani","Chinchpokli","Chiplun","Chopda","Colaba","Dabhol","Daddi","Dahanu","Dahivel","Dapoli","Darwha","Daryapur","Dattapur","Daulatabad","Daund","Deccan Gymkhana","Deglur","Dehu","Deolali","Deolapar","Deoli","Deoni","Deulgaon Raja","Devrukh","Dharangaon","Dharavi","Dharmabad","Dharur","Dhawalpuri","Dhule","Dhulia","Dighori","Diglur","Digras","Dindori, Maharashtra","Diveagar","Dombivli","Dondaicha","Dongri","Dudhani","Durgapur","Durgapur, Chandrapur","Erandol","Faizpur","Fort","Gadchiroli","Gadhinglaj","Gangakher","Gangapur","Ganpatipule","Gevrai","Ghargaon","Ghatanji","Ghatkopar","Ghoti Budrukh","Ghugus","Girgaon","Gondia","Gondiya","Gorai","Goregaon","Guhagar","Hadapsar, Pune","Hadgaon","Halkarni","Harangul","Harnai","Helwak","Hinganghat","Hingoli","Hirapur","Hirapur Hamesha","Hotgi","Ichalkaranji","Igatpuri","Indapur","Jaisingpur","Jaitapur","Jakhangaon","Jalgaon","Jalgaon Jamod","Jalkot","Jalna","Jamkhed","Jamod","Janephal","Jaoli","Jat, Sangli","Jategaon","Jawhar","Jaysingpur","Jejuri","Jintur","Jogeshwari","Juhu","Junnar","Kachurwahi","Kadegaon","Kadus","Kagal","Kaij","Kalamb","Kalamb, Osmanabad","Kalamboli","Kalamnuri","Kalas","Kali(DK)","Kalmeshwar","Kalundri","Kalyan","Kalyani Nagar","Kamargaon","Kamatgi","Kamptee","Kamthi","Kandri","Kankauli","Kankavli","Kannad","Karad","Karajagi","Karanja","Karanja Lad","Karjat","Karkamb","Karmala","Kasara","Kasoda","Kati","Katol","Katral","Khadki","Khalapur","Khallar","Khamgaon","Khanapur","Khandala","Khangaon","Khapa","Kharakvasla","Kharda","Kharghar","Kharsundi","Khed","Khede","Khetia","Khoni","Khopoli","Khuldabad","Kinwat","Kodoli","Kolhapur","Kondalwadi","Kondhali","Kopar Khairane","Kopargaon","Kopela","Koradi","Koregaon","Koynanagar","Kudal","Kuhi","Kurandvad","Kurankhed","Kurduvadi","Kusumba","Lakhandur","Lanja","Lasalgaon","Latur","Lavasa","Lohogaon","Lonar","Lonavla","Mahabaleshwar","Mahad","Mahape","Mahim","Maindargi","Majalgaon","Makhjan","Malabar Hill","Malad","Malegaon","Malkapur","Malvan","Manchar","Mandangad","Mandhal","Mandwa","Mangaon","Mangrul Pir","Manjlegaon","Mankeshwar","Mankhurd","Manmad","Manor","Mansar","Manwat","Manwath","Maregaon","Mastiholi","Masur, India","Matheran","Matunga","Mazagaon","Mehekar","Mehergaon","Mehkar","Mhasla","Mhasvad","Miraj","Mohadi","Mohol","Mohpa","Mokhada taluka","Mora, Maharashtra","Moram","Morsi","Mowad","Mudkhed","Mukher","Mul","Mulher","Mulund","Mumbai","Mumbai Suburban","Murbad","Murgud","Murtajapur","Murud (Raigad)","Murud (Ratnagiri)","Murum","Nadgaon","Nagapur","Nagothana","Nagpur","Nagpur Division","Nala Sopara","Naldurg","Nalegaon","Nampur","Nanded","Nandgaon","Nandnee","Nandura","Nandura Buzurg","Nandurbar","Narayangaon","Nardana","Nariman Point","Narkhed","Nashik","Nashik Division","Navapur","Navi Mumbai","Neral","Nerur","Nevasa","Nighoj","Nilanga","Nipani","Niphad","Nira Narsingpur","Osmanabad","Ozar","Pabal","Pachora","Pahur, Maharashtra","Paithan","Palghar","Pali, Raigad","Palso","Panchgani","Pandharpur","Pandhurli","Panhala","Panvel","Parbhani","Parel","Parli Vaijnath","Parner","Parola","Parseoni","Partur","Patan","Pathardi","Pathri","Patur","Paturda","Paud","Pauni","Pawni","Pedgaon","Peint","Pen","Phaltan","Phulambri","Piliv","Pimpalgaon Baswant","Pimpalgaon Raja","Pimpri","Pimpri-Chinchwad","Pipri","Powai","Prabhadevi","Prakasha","Pulgaon","Pune","Pune Division","Puntamba","Pural","Purna","Pusad","Radhanagari","Rahata","Rahimatpur","Rahuri","Raigarh","Raireshwar","Rajapur","Rajgurunagar","Rajur","Rajura","Ralegaon","Ramewadi","Ramtek","Ratnagiri","Raver","Renapur","Renavi","Revadanda","Revdanda","Risod","Roha","Sailu","Sakol","Sakoli","Sakri","Samudrapur","Sangameshwar","Sangamner","Sangli","Sangola","Sangole","Sangrampur, Maharashtra","Saoli","Saoner","Sarangkheda","Sasvad","Saswad","Satana","Satara","Satara Division","Satpati","Savantvadi","Savda","Savlaj","Sawantvadi","Selu","Sevagram","Sewri","Shahada","Shahapur","Shedbal","Shegaon","Shevgaon","Shikrapur","Shiraguppi","Shirala","Shirdi","Shirgaon","Shirol","Shirpur","Shirud","Shirwal","Shivaji Nagar","Shrigonda","Sillod","Sindewahi","Sindhudurg","Sindi","Sindkheda","Sinnar","Sion, Mumbai","Sironcha","Sirur","Sivala, East Godavari district","Solapur","Sonala","Sonegaon","Songir","Sonvad","Soygaon","Srivardhan","Surgana","Taklibhan","Talbid","Talegaon Dabhade","Talegaon Dhamdhere","Taloda","Talode","Tarapur","Tardeo","Tasgaon","Telhara","Thalner","Thane","Trimbak","Trombay","Tuljapur","Tumsar","Udgir","Ulhasnagar","Umarga","Umarkhed","Umred","Uran","Uruli Kanchan","Vada","Vadgaon","Vadner","Vaijapur","Vairag","Valsang","Vangaon","Varangaon","Vashi","Vasind","Vatul","Velas, Maharashtra","Velneshwar","Vengurla","Vijaydurg","Vikhroli","Vile Parle","Vinchur","Virar","Vita, Maharashtra","Vite","Wadala","Wadgaon","Wadner","Wadwani","Wagholi","Wai","Wakad","Walgaon","Walki","Wani","Wardha","Warora","Warud","Washim","Worli","Yaval","Yavatmal","Yeola"],"Manipur":["Bishnupur","Churachandpur","Imphal","Kakching","Mayang Imphal","Moirang","Phek","Senapati","Tamenglong","Thoubal","Ukhrul","Wangjing","Yairipok"],"Meghalaya":["Cherrapunji","East Garo Hills","East Jaintia Hills","East Khasi Hills","Mairang","Mankachar","Nongpoh","Nongstoin","North Garo Hills","Ri-Bhoi","Shillong","South Garo Hills","South West Garo Hills","South West Khasi Hills","Tura","West Garo Hills","West Jaintia Hills","West Khasi Hills"],"Mizoram":["Aizawl","Champhai","Darlawn","Khawhai","Kolasib","Kolasib district","Lawngtlai","Lunglei","Mamit","North Vanlaiphai","Saiha","Sairang","Saitlaw","Serchhip","Thenzawl"],"Nagaland":["Dimapur","Kohima","Mokokchung","Mon","Peren","Phek","Tuensang","Tuensang District","Wokha","Zunheboto"],"Odisha":["Angul","Angul District","Asika","Athagarh","Bada Barabil","Balangir","Balasore","Baleshwar","Balimila","Balugaon","Banapur","Banki","Banposh","Baragarh","Barbil","Bargarh","Barpali","Basudebpur","Baud","Baudh","Belaguntha","Bhadrak","Bhadrakh","Bhanjanagar","Bhawanipatna","Bhuban","Bhubaneshwar","Binka","Birmitrapur","Bolanikhodan","Brahmapur","Brajarajnagar","Buguda","Burla","Champua","Chandbali","Chatrapur","Chikitigarh","Chittarkonda","Cuttack","Daitari","Deogarh","Dhenkanal","Digapahandi","Gajapati","Ganjam","Gopalpur","Gudari","Gunupur","Hinjilikatu","Hirakud","Jagatsinghapur","Jagatsinghpur","Jajpur","Jaleshwar","Jatani","Jeypore","Jharsuguda","Jharsuguda District","Kaintragarh","Kalahandi","Kamakhyanagar","Kandhamal","Kantabanji","Kantilo","Kendrapara","Kendraparha","Kendujhar","Kesinga","Khallikot","Kharhial","Khordha","Khurda","Kiri Buru","Kodala","Konarka","Koraput","Kuchaiburi","Kuchinda","Malakanagiri","Malkangiri","Mayurbhanj","Nabarangpur","Nayagarh","Nayagarh District","Nilgiri","Nimaparha","Nowrangapur","Nuapada","Padampur","Paradip Garh","Patamundai","Patnagarh","Phulbani","Pipili","Polasara","Puri","Purushottampur","Rambha","Raurkela","Rayagada","Remuna","Rengali","Sambalpur","Sonepur","Sorada","Soro","Subarnapur","Sundargarh","Talcher","Tarabha","Titlagarh","Udayagiri"],"Puducherry":["Karaikal","Mahe","Puducherry","Yanam"],"Punjab":["Abohar","Adampur","Ajitgarh","Ajnala","Akalgarh","Alawalpur","Amloh","Amritsar","Anandpur Sahib","Badhni Kalan","Bagha Purana","Bakloh","Balachor","Banga","Banur","Barnala","Batala","Begowal","Bhadaur","Bhatinda","Bhawanigarh","Bhikhi","Bhogpur","Bholath","Budhlada","Chima","Dasuya","Dera Baba Nanak","Dera Bassi","Dhanaula","Dhariwal","Dhilwan","Dhudi","Dhuri","Dina Nagar","Dirba","Doraha","Faridkot","Fatehgarh Churian","Fatehgarh Sahib","Fazilka","Firozpur","Firozpur District","Gardhiwala","Garhshankar","Ghanaur","Giddarbaha","Gurdaspur","Guru Har Sahai","Hajipur","Hariana","Hoshiarpur","Ishanpur","Jagraon","Jaito","Jalalabad","Jalandhar","Jandiala","Jandiala Guru","Kalanaur","Kapurthala","Kartarpur","Khamanon","Khanna","Kharar","Khemkaran","Kot Isa Khan","Kotkapura","Laungowal","Ludhiana","Machhiwara","Majitha","Makhu","Malaut","Malerkotla","Mansa","Maur Mandi","Moga","Mohali","Morinda","Mukerian","Nabha","Nakodar","Nangal","Nawanshahr","Nurmahal","Nurpur Kalan","Pathankot","Patiala","Patti","Phagwara","Phillaur","Qadian","Rahon","Raikot","Rajasansi","Rajpura","Ram Das","Rampura","Rupnagar","Samrala","Sanaur","Sangrur","Sardulgarh","Shahid Bhagat Singh Nagar","Shahkot","Sham Churasi","Sirhind-Fategarh","Sri Muktsar Sahib","Sultanpur Lodhi","Sunam","Talwandi Bhai","Talwara","Tarn Taran Sahib","Zira"],"Rajasthan":["Abhaneri","Abu","Abu Road","Ajmer","Aklera","Alwar","Amet","Anta","Anupgarh","Asind","Bagar","Bakani","Bali","Balotra","Bandikui","Banswara","Baran","Bari","Bari Sadri","Barmer","Basi","Basni","Baswa","Bayana","Beawar","Begun","Behror","Bhadasar","Bhadra","Bharatpur","Bhasawar","Bhilwara","Bhindar","Bhinmal","Bhiwadi","Bhuma","Bikaner","Bilara","Bissau","Borkhera","Bundi","Chaksu","Chechat","Chhabra","Chhapar","Chhoti Sadri","Chidawa","Chittaurgarh","Churu","Dariba","Dausa","Deoli","Deshnoke","Devgarh","Dhaulpur","Didwana","Dig","Dungarpur","Fatehpur","Galiakot","Ganganagar","Gangapur","Govindgarh","Gulabpura","Hanumangarh","Hindaun","Jahazpur","Jaipur","Jaisalmer","Jaitaran","Jalor","Jalore","Jhalawar","Jhalrapatan","Jhunjhunun","Jobner","Jodhpur","Kaman","Kanor","Kapren","Karanpur","Karauli","Kekri","Keshorai Patan","Khandela","Khanpur","Khetri","Kishangarh","Kota","Kotputli","Kuchaman","Kuchera","Kumher","Kushalgarh","Lachhmangarh Sikar","Ladnun","Lakheri","Lalsot","Losal","Mahwah","Makrana","Malpura","Mandal","Mandalgarh","Mandawar","Mangrol","Manohar Thana","Manoharpur","Meethari Marwar","Merta","Mundwa","Nadbai","Nagar","Nagaur","Nainwa","Napasar","Naraina","Nasirabad","Nathdwara","Nawa","Nawalgarh","Neem ka Thana","Nimaj","Nimbahera","Niwai","Nohar","Nokha","Padampur","Pali","Partapur","Parvatsar","Phalodi","Phulera","Pilani","Pilibangan","Pindwara","Pipar","Pirawa","Pokaran","Pratapgarh","Pushkar","Raipur","Raisinghnagar","Rajakhera","Rajaldesar","Rajgarh","Rajsamand","Ramganj Mandi","Ramgarh","Rani","Ratangarh","Rawatbhata","Rawatsar","Ringas","Sadri","Salumbar","Sambhar","Samdari","Sanchor","Sangaria","Sangod","Sardarshahr","Sarwar","Sawai Madhopur","Shahpura","Sheoganj","Sikar","Sirohi","Siwana","Sojat","Sri Dungargarh","Sri Madhopur","Sujangarh","Suket","Sunel","Surajgarh","Suratgarh","Takhatgarh","Taranagar","Tijara","Todabhim","Todaraisingh","Tonk","Udaipur","Udpura","Uniara","Wer"],"Sikkim":["East District","Gangtok","Gyalshing","Jorethang","Mangan","Namchi","Naya Bazar","North District","Rangpo","Singtam","South District","West District"],"Tamil Nadu":["Abiramam","Adirampattinam","Aduthurai","Alagapuram","Alandur","Alanganallur","Alangayam","Alangudi","Alangulam","Alappakkam","Alwa Tirunagari","Ambasamudram","Ambattur","Ambur","Ammapettai","Anamalais","Andippatti","Annamalainagar","Annavasal","Annur","Anthiyur","Arakkonam","Arantangi","Arcot","Arimalam","Ariyalur","Arni","Arumbavur","Arumuganeri","Aruppukkottai","Aruvankad","Attayyampatti","Attur","Auroville","Avadi","Avinashi","Ayakudi","Ayyampettai","Belur","Bhavani","Bodinayakkanur","Chengam","Chennai","Chennimalai","Chetput","Chettipalaiyam","Cheyyar","Cheyyur","Chidambaram","Chingleput","Chinna Salem","Chinnamanur","Chinnasekkadu","Cholapuram","Coimbatore","Colachel","Cuddalore","Cumbum","Denkanikota","Desur","Devadanappatti","Devakottai","Dhali","Dharapuram","Dharmapuri","Dindigul","Dusi","Elayirampannai","Elumalai","Eral","Eraniel","Erode","Erumaippatti","Ettaiyapuram","Gandhi Nagar","Gangaikondan","Gangavalli","Gingee","Gobichettipalayam","Gudalur","Gudiyatham","Guduvancheri","Gummidipundi","Harur","Hosur","Idappadi","Ilampillai","Iluppur","Injambakkam","Irugur","Jalakandapuram","Jalarpet","Jayamkondacholapuram","Kadambur","Kadayanallur","Kalakkadu","Kalavai","Kallakkurichchi","Kallidaikurichi","Kallupatti","Kalugumalai","Kamuthi","Kanadukattan","Kancheepuram","Kanchipuram","Kangayam","Kanniyakumari","Karaikkudi","Karamadai","Karambakkudi","Kariapatti","Karumbakkam","Karur","Katpadi","Kattivakkam","Kattupputtur","Kaveripatnam","Kayalpattinam","Kayattar","Keelakarai","Kelamangalam","Kil Bhuvanagiri","Kilvelur","Kiranur","Kodaikanal","Kodumudi","Kombai","Konganapuram","Koothanallur","Koradachcheri","Korampallam","Kotagiri","Kottaiyur","Kovilpatti","Krishnagiri","Kulattur","Kulittalai","Kumaralingam","Kumbakonam","Kunnattur","Kurinjippadi","Kuttalam","Kuzhithurai","Lalgudi","Madambakkam","Madipakkam","Madukkarai","Madukkur","Madurai","Madurantakam","Mallapuram","Mallasamudram","Mallur","Manali","Manalurpettai","Manamadurai","Manappakkam","Manapparai","Manavalakurichi","Mandapam","Mangalam","Mannargudi","Marakkanam","Marandahalli","Masinigudi","Mattur","Mayiladuthurai","Melur","Mettuppalaiyam","Mettur","Minjur","Mohanur","Mudukulattur","Mulanur","Musiri","Muttupet","Naduvattam","Nagapattinam","Nagercoil","Namagiripettai","Namakkal","Nambiyur","Nambutalai","Nandambakkam","Nangavalli","Nangilickondan","Nanguneri","Nannilam","Naravarikuppam","Nattam","Nattarasankottai","Needamangalam","Neelankarai","Negapatam","Nellikkuppam","Nilakottai","Nilgiris","Odugattur","Omalur","Ooty","Padmanabhapuram","Palakkodu","Palamedu","Palani","Palavakkam","Palladam","Pallappatti","Pallattur","Pallavaram","Pallikondai","Pallipattu","Pallippatti","Panruti","Papanasam","Papireddippatti","Papparappatti","Paramagudi","Pattukkottai","Pennadam","Pennagaram","Pennathur","Peraiyur","Perambalur","Peranamallur","Peranampattu","Peravurani","Periyakulam","Periyanayakkanpalaiyam","Periyanegamam","Periyapatti","Periyapattinam","Perundurai","Perungudi","Perur","Pollachi","Polur","Ponnamaravati","Ponneri","Poonamalle","Porur","Pudukkottai","Puduppatti","Pudur","Puduvayal","Puliyangudi","Puliyur","Pullambadi","Punjai Puliyampatti","Rajapalaiyam","Ramanathapuram","Rameswaram","Ranipet","Rasipuram","Saint Thomas Mount","Salem","Sathankulam","Sathyamangalam","Sattur","Sayalkudi","Seven Pagodas","Sholinghur","Singanallur","Singapperumalkovil","Sirkazhi","Sirumugai","Sivaganga","Sivagiri","Sivakasi","Srimushnam","Sriperumbudur","Srivaikuntam","Srivilliputhur","Suchindram","Sulur","Surandai","Swamimalai","Tambaram","Tanjore","Taramangalam","Tattayyangarpettai","Thanjavur","Tharangambadi","Theni","Thenkasi","Thirukattupalli","Thiruthani","Thiruvaiyaru","Thiruvallur","Thiruvarur","Thiruvidaimaruthur","Thoothukudi","Tindivanam","Tinnanur","Tiruchchendur","Tiruchengode","Tiruchirappalli","Tirukkoyilur","Tirumullaivasal","Tirunelveli","Tirunelveli Kattabo","Tiruppalaikudi","Tirupparangunram","Tiruppur","Tiruppuvanam","Tiruttangal","Tiruvannamalai","Tiruvottiyur","Tisaiyanvilai","Tondi","Turaiyur","Udangudi","Udumalaippettai","Uppiliyapuram","Usilampatti","Uttamapalaiyam","Uttiramerur","Uttukkuli","V.S.K.Valasai (Dindigul-Dist.)","Vadakku Valliyur","Vadakku Viravanallur","Vadamadurai","Vadippatti","Valangaiman","Valavanur","Vallam","Valparai","Vandalur","Vandavasi","Vaniyambadi","Vasudevanallur","Vattalkundu","Vedaraniyam","Vedasandur","Velankanni","Vellanur","Vellore","Velur","Vengavasal","Vettaikkaranpudur","Vettavalam","Vijayapuri","Vikravandi","Vilattikulam","Villupuram","Viraganur","Virudhunagar","Vriddhachalam","Walajapet","Wallajahbad","Wellington"],"Telangana":["Adilabad","Alampur","Andol","Asifabad","Balapur","Banswada","Bellampalli","Bhadrachalam","Bhadradri Kothagudem","Bhaisa","Bhongir","Bodhan","Chandur","Chatakonda","Dasnapur","Devarkonda","Dornakal","Farrukhnagar","Gaddi Annaram","Gadwal","Ghatkesar","Gopalur","Gudur","Hyderabad","Jagtial","Jangaon","Jangoan","Jayashankar Bhupalapally","Jogulamba Gadwal","Kagaznagar","Kamareddi","Kamareddy","Karimnagar","Khammam","Kodar","Koratla","Kothapet","Kottagudem","Kottapalli","Kukatpalli","Kyathampalle","Lakshettipet","Lal Bahadur Nagar","Mahabubabad","Mahbubnagar","Malkajgiri","Mancheral","Mandamarri","Manthani","Manuguru","Medak","Medchal","Medchal Malkajgiri","Mirialguda","Nagar Karnul","Nalgonda","Narayanpet","Narsingi","Naspur","Nirmal","Nizamabad","Paloncha","Palwancha","Patancheru","Peddapalli","Quthbullapur","Rajanna Sircilla","Ramagundam","Ramgundam","Rangareddi","Sadaseopet","Sangareddi","Sathupalli","Secunderabad","Serilingampalle","Siddipet","Singapur","Sirpur","Sirsilla","Sriramnagar","Suriapet","Tandur","Uppal Kalan","Vemalwada","Vikarabad","Wanparti","Warangal","Yellandu","Zahirabad"],"Tripura":["Agartala","Amarpur","Ambasa","Barjala","Belonia","Dhalai","Dharmanagar","Gomati","Kailashahar","Kamalpur","Khowai","North Tripura","Ranir Bazar","Sabrum","Sonamura","South Tripura","Udaipur","Unakoti","West Tripura"],"Uttar Pradesh":["Achhnera","Afzalgarh","Agra","Ahraura","Aidalpur","Airwa","Akbarpur","Akola","Aliganj","Aligarh","Allahabad","Allahganj","Amanpur","Amauli","Ambahta","Ambedkar Nagar","Amethi","Amroha","Anandnagar","Antu","Anupshahr","Aonla","Araul","Asalatganj","Atarra","Atrauli","Atraulia","Auraiya","Auras","Ayodhya","Azamgarh","Azizpur","Baberu","Babina","Babrala","Babugarh","Bachhraon","Bachhrawan","Baghpat","Baghra","Bah","Baheri","Bahjoi","Bahraich","Bahraigh","Bahsuma","Bahua","Bajna","Bakewar","Baksar","Balamau","Baldeo","Baldev","Ballia","Balrampur","Banat","Banbasa","Banda","Bangarmau","Bansdih","Bansgaon","Bansi","Banthra","Bara Banki","Baragaon","Baraut","Bareilly","Barhalganj","Barkhera","Barkhera Kalan","Barokhar","Barsana","Barwar (Lakhimpur Kheri)","Basti","Behat","Bela","Belthara","Beniganj","Beswan","Bewar","Bhadarsa","Bhadohi","Bhagwantnagar","Bharatpura","Bhargain","Bharthana","Bharwari","Bhaupur","Bhimtal","Bhinga","Bhognipur","Bhongaon","Bidhnu","Bidhuna","Bighapur","Bighapur Khurd","Bijnor","Bikapur","Bilari","Bilariaganj","Bilaspur","Bilgram","Bilhaur","Bilsanda","Bilsi","Bilthra","Binauli","Binaur","Bindki","Birdpur","Birpur","Bisalpur","Bisanda Buzurg","Bisauli","Bisenda Buzurg","Bishunpur Urf Maharajganj","Biswan","Bithur","Budaun","Budhana","Bulandshahr","Captainganj","Chail","Chakia","Chandauli","Chandauli District","Chandausi","Chandpur","Chanduasi","Charkhari","Charthawal","Chhaprauli","Chharra","Chhata","Chhibramau","Chhitauni","Chhutmalpur","Chillupar","Chirgaon","Chitrakoot","Chitrakoot Dham","Chopan","Chunar","Churk","Colonelganj","Dadri","Dalmau","Dankaur","Daraganj","Daranagar","Dasna","Dataganj","Daurala","Dayal Bagh","Deoband","Deogarh","Deoranian","Deoria","Derapur","Dewa","Dhampur","Dhanaura","Dhanghata","Dharau","Dhaurahra","Dibai","Divrasai","Dohrighat","Domariaganj","Dostpur","Dudhi","Etah","Etawah","Etmadpur","Faizabad","Farah","Faridnagar","Faridpur","Farrukhabad","Fatehabad","Fatehganj West","Fatehgarh","Fatehpur","Fatehpur (Barabanki)","Fatehpur Chaurasi","Fatehpur Sikri","Firozabad","Fyzabad","Gahlon","Gahmar","Gaini","Gajraula","Gangoh","Ganj Dundawara","Ganj Dundwara","Ganj Muradabad","Garautha","Garhi Pukhta","Garhmuktesar","Garhwa","Gauriganj","Gautam Buddha Nagar","Gawan","Ghatampur","Ghaziabad","Ghazipur","Ghiror","Ghorawal","Ghosi","Gohand","Gokul","Gola Bazar","Gola Gokarannath","Gonda","Gonda (Aligarh)","Gonda City","Gopamau","Gorakhpur","Gosainganj","Goshainganj","Govardhan","Greater Noida","Gulaothi","Gunnaur","Gursahaiganj","Gursarai","Gyanpur","Haldaur","Hamirpur","Handia","Hapur","Haraipur","Haraiya","Harchandpur","Hardoi","Harduaganj","Hasanpur","Hastinapur","Hata","Hata (India)","Hathras","Hulas","Ibrahimpur","Iglas","Ikauna","Indergarh","Indragarh","Islamnagar","Islamnagar (Badaun)","Itaunja","Itimadpur","Jagdishpur","Jagnair","Jahanabad","Jahanabad (Pilibhit)","Jahangirabad","Jahangirpur","Jainpur","Jais","Jalalabad","Jalali","Jalalpur","Jalaun","Jalesar","Janghai","Jansath","Jarwa","Jarwal","Jasrana","Jaswantnagar","Jaunpur","Jewar","Jhajhar","Jhalu","Jhansi","Jhinjhak","Jhinjhana","Jhusi","Jiyanpur","Jyotiba Phule Nagar","Kabrai","Kachhwa","Kadaura","Kadipur","Kagarol","Kaimganj","Kairana","Kakori","Kakrala","Kalinagar","Kalpi","Kalyanpur","Kamalganj","Kampil","Kandhla","Kannauj","Kanpur","Kanpur Dehat","Kant","Kanth","Kaptanganj","Kara","Karari","Karbigwan","Karchana","Karhal","Kasganj","Katra","Kausani","Kaushambi District","Kemri","Khada","Khaga","Khailar","Khair","Khairabad","Khalilabad","Khanpur","Kharela","Khargupur","Kharkhauda","Khatauli","Khekra","Kheri","Khudaganj","Khurja","Khutar","Kirakat","Kiraoli","Kiratpur","Kishanpur","Kishanpur baral","Kishni","Kithor","Konch","Kopaganj","Kosi","Kota","Kotra","Kuchesar","Kudarkot","Kulpahar","Kunda","Kundarkhi","Kundarki","Kurara","Kurebhar,saidkhanpur","Kushinagar","Kusmara","Kuthaund","Laharpur","Lakhimpur","Lakhna","Lalganj","Lalitpur","Lambhua","Lar","Lawar","Lawar Khas","Loni","Lucknow","Lucknow District","Machhali Shahar","Machhlishahr","Madhoganj","Madhogarh","Maghar","Mahaban","Maharajganj","Mahmudabad","Mahoba","Maholi","Mahrajganj","Mahrajganj (Raebareli)","Mahroni","Mahul","Mailani","Mainpuri","Majhupur","Makanpur","Malasa","Malihabad","Mandawar","Maniar","Manikpur","Manjhanpur","Mankapur","Marahra","Mariahu","Mataundh","Mathura","Mau","Mau Aima","Mau Aimma","Maudaha","Mauranwan","Maurawan","Mawana","Mawar","Meerut","Mehdawal","Mehnagar","Mehndawal","Milak","Milkipur","Miranpur","Miranpur Katra","Mirganj","Mirzapur","Misrikh","Mohan","Mohanpur","Moradabad","Moth","Mubarakpur","Mughal Sarai","Muhammadabad","Mukteshwar","Mungra Badshahpur","Munsyari","Muradabad","Muradnagar","Mursan","Musafir-Khana","Musafirkhana","Muzaffarnagar","Nadigaon","Nagina","Nagla","Nagram","Najibabad","Nakur","Nanauta","Nandgaon","Nanpara","Narauli","Naraura","Narora","Naugama","Naurangpur","Nautanwa","Nawabganj","Nawabganj (Barabanki)","Nawabganj (Bareilly)","Newara","Nichlaul","Nigoh","Nihtaur","Niwari","Nizamabad","Noida","Nurpur","Obra","Orai","Oran","Pachperwa","Padrauna","Pahasu","Paigaon","Pali","Palia Kalan","Paras Rampur","Parichha","Parichhatgarh","Parshadepur","Pathakpura","Patiali","Patti","Pawayan","Payagpur","Phalauda","Phaphamau","Phaphund","Phariha","Pheona","Phulpur","Pichhaura","Pihani","Pilibhit","Pilkhua","Pilkhuwa","Pinahat","Pipraich","Pipri","Pratapgarh","Prayagraj (Allahabad)","Pukhrayan","Puranpur","Purmafi","Purwa","Qadirganj","Rabupura","Radha Kund","Radhakund","Raebareli","Rajapur","Ramkola","Ramnagar","Rampur","Rampura","Ranipur","Ranipur Barsi","Rasra","Rasulabad","Rath","Raya","Rehar","Renukoot","Renukut","Reoti","Reotipur","Richha","Robertsganj","Rudarpur","Rudauli","Rura","Sabalpur","Sachendi","Sadabad","Sadat","Safipur","Saharanpur","Sahaspur","Sahaswan","Sahawar","Sahibabad","Sahpau","Saidpur","Sakhanu","Sakit","Salempur","Salon","Sambhal","Samthar","Sandi","Sandila","Sant Kabir Nagar","Sant Ravi Das Nagar","Sarai Akil","Sarai Ekdil","Sarai Mir","Sarauli","Sardhana","Sarila","Sarurpur","Sasni","Satrikh","Saurikh","Sector","Seohara","Shahabad","Shahganj","Shahi","Shahjahanpur","Shahpur","Shamli","Shamsabad","Shankargarh","Shergarh","Sherkot","Shibnagar","Shikarpur","Shikarpur (Bulandshahr)","Shikohabad","Shishgarh","Shivrajpur","Shrawasti","Siddharthnagar","Siddhaur","Sidhauli","Sidhpura","Sikandarabad","Sikandarpur","Sikandra","Sikandra Rao","Sikandrabad","Sirathu","Sirsa","Sirsaganj","Sirsi","Sisauli","Siswa Bazar","Sitapur","Sonbhadra","Soron","Suar","Sultanpur","Surianwan","Tajpur","Talbahat","Talgram","Tanda","Terha","Thakurdwara","Thana Bhawan","Tigri","Tikaitnagar","Tikri","Tilhar","Tilsahri","Tindwari","Titron","Tori Fatehpur","Tori-Fatehpur","Tulsipur","Tundla","Ugu","Ujhani","Umri","Un","Unnao","Usawan","Usehat","Uska","Utraula","Varanasi","Vindhyachal","Vrindavan","Walterganj","Wazirganj","Yusufpur","Zafarabad","Zaidpur","Zamania"],"Uttarakhand":["Almora","Bageshwar","Barkot","Bazpur","Bhim Tal","Bhowali","Birbhaddar","Chakrata","Chamoli","Champawat","Clement Town","Dehradun","Devaprayag","Dharchula","Doiwala","Dugadda","Dwarahat","Garhwal","Haldwani","Harbatpur","Haridwar","Jaspur","Joshimath","Kaladhungi","Kalagarh Project Colony","Kashipur","Khatima","Kichha","Kotdwara","Laksar","Lansdowne","Lohaghat","Manglaur","Mussoorie","Naini Tal","Narendranagar","Pauri","Pipalkoti","Pithoragarh","Raipur","Raiwala Bara","Ramnagar","Ranikhet","Rishikesh","Roorkee","Rudraprayag","Sitarganj","Srinagar","Sultanpur","Tanakpur","Tehri","Tehri-Garhwal","Udham Singh Nagar","Uttarkashi","Vikasnagar"],"West Bengal":["Ahmedpur","Aistala","Aknapur","Alipurduar","Amlagora","Amta","Amtala","Andal","Arambagh community development block","Asansol","Ashoknagar Kalyangarh","Badkulla","Baduria","Bagdogra","Bagnan","Bagula","Bahula","Baidyabati","Bakreswar","Balarampur","Bali Chak","Bally","Balurghat","Bamangola community development block","Baneswar","Bangaon","Bankra","Bankura","Bansberia","Bansihari community development block","Barabazar","Baranagar","Barasat","Bardhaman","Barjora","Barrackpore","Baruipur","Basanti","Basirhat","Bawali","Begampur","Belda","Beldanga","Beliatore","Berhampore","Bhadreswar","Bhandardaha","Bhatpara","Birbhum district","Birpara","Bishnupur","Bolpur","Budge Budge","Canning","Chakapara","Chakdaha","Champadanga","Champahati","Champdani","Chandannagar","Chandrakona","Chittaranjan","Churulia","Contai","Cooch Behar","Cossimbazar","Dakshin Dinajpur district","Dalkola","Dam Dam","Darjeeling","Daulatpur","Debagram","Debipur","Dhaniakhali community development block","Dhulagari","Dhulian","Dhupguri","Diamond Harbour","Digha","Dinhata","Domjur","Dubrajpur","Durgapur","Egra","Falakata","Farakka","Fort Gloster","Gaighata community development block","Gairkata","Gangadharpur","Gangarampur","Garui","Garulia","Ghatal","Giria","Gobardanga","Gobindapur","Gopalpur","Gopinathpur","Gorubathan","Gosaba","Gosanimari","Gurdaha","Guskhara","Habra","Haldia","Haldibari","Halisahar","Harindanga","Haringhata","Haripur","Hasimara","Hindusthan Cables Town","Hooghly district","Howrah","Ichapur","Indpur community development block","Ingraj Bazar","Islampur","Jafarpur","Jaigaon","Jalpaiguri","Jamuria","Jangipur","Jaynagar Majilpur","Jejur","Jhalida","Jhargram","Jhilimili","Kakdwip","Kalaikunda","Kaliaganj","Kalimpong","Kalna","Kalyani","Kamarhati","Kamarpukur","Kanchrapara","Kandi","Karimpur","Katwa","Kenda","Keshabpur","Kharagpur","Kharar","Kharba","Khardaha","Khatra","Kirnahar","Kolkata","Konnagar","Krishnanagar","Krishnapur","Kshirpai","Kulpi","Kultali","Kulti","Kurseong","Lalgarh","Lalgola","Loyabad","Madanpur","Madhyamgram","Mahiari","Mahishadal community development block","Mainaguri","Manikpara","Masila","Mathabhanga","Matiali community development block","Matigara community development block","Medinipur","Mejia community development block","Memari","Mirik","Mohanpur community development block","Monoharpur","Muragacha","Muri","Murshidabad","Nabadwip","Nabagram","Nadia district","Nagarukhra","Nagrakata","Naihati","Naksalbari","Nalhati","Nalpur","Namkhana community development block","Nandigram","Nangi","Nayagram community development block","North 24 Parganas district","Odlabari","Paikpara","Panagarh","Panchla","Panchmura","Pandua","Panihati","Panskura","Parbatipur","Paschim Medinipur district","Patiram","Patrasaer","Patuli","Pujali","Puncha community development block","Purba Medinipur district","Purulia","Raghudebbati","Raghunathpur","Raiganj","Rajmahal","Rajnagar community development block","Ramchandrapur","Ramjibanpur","Ramnagar","Rampur Hat","Ranaghat","Raniganj","Raypur","Rishra","Sahapur","Sainthia","Salanpur community development block","Sankarpur","Sankrail","Santipur","Santoshpur","Santuri community development block","Sarenga","Serampore","Serpur","Shyamnagar, West Bengal","Siliguri","Singur","Sodpur","Solap","Sonada","Sonamukhi","Sonarpur community development block","South 24 Parganas district","Srikhanda","Srirampur","Suri","Swarupnagar community development block","Takdah","Taki","Tamluk","Tarakeswar","Titagarh","Tufanganj","Tulin","Uchalan","Ula","Uluberia","Uttar Dinajpur district","Uttarpara Kotrung"]}
+\ No newline at end of file
+diff --git a/lib/server/mappers.ts b/lib/server/mappers.ts
+index 9aba505..f338dd8 100644
+--- a/lib/server/mappers.ts
++++ b/lib/server/mappers.ts
+@@ -5,7 +5,8 @@ import type { Booking, CategoryId, MedicalDocument, Profile, Vital } from "@/lib
+ 
+ export interface ProfileRow {
+   user_id: string; name: string; age: string; gender: string; phone: string;
+-  emergency: string; address: string; type: "Elderly" | "General Public";
++  emergency_name?: string; emergency_phone?: string;
++  state?: string; city?: string; pincode?: string; address: string; type: "Elderly" | "General Public";
+   caregiver_name: string; caregiver_phone: string;
+ }
+ export interface VitalRow {
+@@ -26,8 +27,9 @@ export interface BookingRow {
+ /* ---------- database -> API (matches lib/types.ts) ---------- */
+ 
+ export const toProfile = (r: ProfileRow): Profile => ({
+-  name: r.name, age: r.age, gender: r.gender, phone: r.phone, emergency: r.emergency,
+-  address: r.address, type: r.type, caregiverName: r.caregiver_name, caregiverPhone: r.caregiver_phone,
++  name: r.name, age: r.age, gender: r.gender, phone: r.phone,
++  emergencyName: r.emergency_name ?? "", emergencyPhone: r.emergency_phone ?? "",
++  state: r.state ?? "", city: r.city ?? "", pincode: r.pincode ?? "", address: r.address, type: r.type, caregiverName: r.caregiver_name, caregiverPhone: r.caregiver_phone,
+ });
+ 
+ export const toVital = (r: VitalRow): Vital => ({
+diff --git a/lib/server/validation.ts b/lib/server/validation.ts
+index eaf1286..e3baa57 100644
+--- a/lib/server/validation.ts
++++ b/lib/server/validation.ts
+@@ -1,29 +1,61 @@
+ import "server-only";
+ import { z } from "zod";
+ import { badRequest } from "./http";
++import {
++  checkAddressLine, checkAge, checkCityText, checkGender, checkMobile, checkName, checkPincode, collapseSpaces, type Check,
++} from "@/lib/validation/common";
++import { STATES } from "@/lib/validation/profile";
++import { checkReason, checkSlot, checkWhatsapp, cleanReason, cleanWhatsapp } from "@/lib/validation/booking";
++import { checkBp, checkVitalDate, LIMITS } from "@/lib/validation/vitals";
++import { todayIst } from "@/lib/validation/booking";
+ 
+ const text = (max: number) => z.string().trim().max(max);
+ 
++/** Turn one of our "return message or null" checks into a zod rule that reports the same message. */
++const rule = (fn: (v: string) => Check) => (v: string, ctx: z.RefinementCtx) => {
++  const msg = fn(v);
++  if (msg) ctx.addIssue({ code: "custom", message: msg });
++};
++const clean = z.string().max(400).transform(collapseSpaces);
++
+ export const profileSchema = z.object({
+-  name: text(100),
+-  age: text(10),
+-  gender: text(30),
+-  phone: text(20),
+-  emergency: text(20),
+-  address: text(300),
++  name: clean.superRefine(rule((v) => checkName(v, "Name"))),
++  age: z.string().trim().superRefine(rule(checkAge)),
++  gender: z.string().superRefine(rule(checkGender)),
++  phone: z.string().trim().superRefine(rule((v) => checkMobile(v, "Phone number"))),
++  emergencyName: clean.superRefine(rule((v) => checkName(v, "Emergency contact name"))),
++  emergencyPhone: z.string().trim().superRefine(rule((v) => checkMobile(v, "Emergency contact number"))),
++  state: z.string().refine((v) => STATES.includes(v), "Please select a valid state."),
++  city: clean.superRefine(rule(checkCityText)),
++  pincode: z.string().trim().superRefine(rule(checkPincode)),
++  address: clean.superRefine(rule(checkAddressLine)),
+   type: z.enum(["Elderly", "General Public"]),
+-  caregiverName: text(100),
+-  caregiverPhone: text(20),
++  caregiverName: clean.superRefine(rule((v) => (v ? checkName(v, "Caregiver name") : null))),
++  caregiverPhone: z.string().trim().superRefine(rule((v) => (v ? checkMobile(v, "Caregiver number") : null))),
++}).superRefine((p, ctx) => {
++  if (p.emergencyPhone === p.phone) {
++    ctx.addIssue({ code: "custom", path: ["emergencyPhone"], message: "Emergency contact number must be different from your own number." });
++  }
++  if (!!p.caregiverName !== !!p.caregiverPhone) {
++    ctx.addIssue({ code: "custom", path: ["caregiverName"], message: "Give both the caregiver name and number, or leave both empty." });
++  }
+ });
+ 
++const vNum = (label: string, min: number, max: number, decimal: boolean) =>
++  z.string().trim().superRefine(rule((v) => {
++    if (!(decimal ? /^\d{1,3}(\.\d)?$/ : /^\d{1,3}$/).test(v)) return `${label} must be a valid number.`;
++    const n = Number(v);
++    return n < min || n > max ? `${label} must be between ${min} and ${max}.` : null;
++  }));
++
+ export const vitalSchema = z.object({
+-  date: text(40),
+-  bp: text(20),
+-  hr: text(10),
+-  spo2: text(10),
+-  temp: text(10),
+-  sugar: text(10),
+-  weight: text(10),
++  date: z.string().trim().superRefine(rule((v) => checkVitalDate(v, todayIst()))),
++  bp: z.string().trim().superRefine(rule(checkBp)),
++  hr: vNum("Heart rate", LIMITS.hr.min, LIMITS.hr.max, false),
++  spo2: vNum("SpO2", LIMITS.spo2.min, LIMITS.spo2.max, false),
++  temp: vNum("Temperature", LIMITS.temp.min, LIMITS.temp.max, true),
++  sugar: vNum("Blood sugar", LIMITS.sugar.min, LIMITS.sugar.max, true),
++  weight: vNum("Weight", LIMITS.weight.min, LIMITS.weight.max, true),
+ });
+ 
+ export const CATEGORY_IDS = ["elderly", "second-opinion", "mental-health", "sexual-health"] as const;
+@@ -32,11 +64,11 @@ export const bookingSchema = z.object({
+   service: z.string().trim().min(1).max(100),
+   date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+   time: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/),
+-  reason: text(1000).default(""),
++  reason: z.string().max(3000).default("").superRefine(rule(checkReason)).transform(cleanReason),
+   category: z.enum(CATEGORY_IDS).optional(),
+   patientId: text(100).optional(),
+-  patientName: text(100).optional(),
+-  whatsapp: z.string().trim().regex(/^\+?\d[\d\s-]{8,17}$/, "Enter a valid WhatsApp number").optional(),
++  patientName: text(100).refine((v) => !/[<>{}`\\]/.test(v), "Invalid name.").optional(),
++  whatsapp: z.string().max(30).superRefine(rule(checkWhatsapp)).transform(cleanWhatsapp),
+   attachments: z.array(text(200)).max(6).optional(),
+ });
+ 
+@@ -63,6 +95,8 @@ export async function parseBody<T extends z.ZodType>(req: Request, schema: T): P
+   }
+   const parsed = schema.safeParse(raw);
+   if (!parsed.success) {
++    const custom = parsed.error.issues.find((i) => i.code === "custom");
++    if (custom) throw badRequest(custom.message); // our own friendly validation messages
+     const fields = [...new Set(parsed.error.issues.map((i) => i.path.join(".") || "body"))];
+     throw badRequest(`Invalid fields: ${fields.join(", ")}`);
+   }
+@@ -70,6 +104,11 @@ export async function parseBody<T extends z.ZodType>(req: Request, schema: T): P
+ }
+ 
+ /** A booking date must be real, not far in the past (1 day grace for time zones) and within a year. */
++export function assertBookingSlotOk(date: string, time: string): void {
++  const msg = checkSlot(date, time);
++  if (msg) throw badRequest(msg);
++}
++
+ export function assertBookingDateOk(date: string): void {
+   const d = new Date(`${date}T00:00:00Z`);
+   if (Number.isNaN(d.getTime()) || d.toISOString().slice(0, 10) !== date) throw badRequest("Invalid date.");
+diff --git a/lib/types.ts b/lib/types.ts
+index e7f5f04..e019a77 100644
+--- a/lib/types.ts
++++ b/lib/types.ts
+@@ -1,6 +1,7 @@
+ export interface Profile {
+   name: string; age: string; gender: string; phone: string;
+-  emergency: string; address: string;
++  emergencyName: string; emergencyPhone: string;
++  state: string; city: string; pincode: string; address: string;
+   type: "Elderly" | "General Public";
+   caregiverName: string; caregiverPhone: string;
+ }
+diff --git a/lib/validation/booking.ts b/lib/validation/booking.ts
+new file mode 100644
+index 0000000..b917460
+--- /dev/null
++++ b/lib/validation/booking.ts
+@@ -0,0 +1,70 @@
++import { collapseSpaces, hasDangerousText, normalizeIndianMobile, checkMobile, wordCount, type Check } from "./common";
++
++/** The clinic works in Indian time, so every booking date/time is treated as IST (UTC+05:30). */
++export const MIN_LEAD_HOURS = 2;
++export const MAX_DAYS_AHEAD = 90;
++export const MAX_REASON_WORDS = 150;
++const IST_MS = 5.5 * 60 * 60 * 1000;
++
++const pad = (n: number) => String(n).padStart(2, "0");
++
++/** Current IST date & time pieces for a given instant. */
++export function istParts(at: number = Date.now()) {
++  const d = new Date(at + IST_MS);
++  return { date: `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())}`, time: `${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}` };
++}
++export const todayIst = () => istParts().date;
++
++/** Epoch ms of a booking slot (date + time in IST). NaN if invalid. */
++export function slotMs(date: string, time: string): number {
++  if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || !/^([01]\d|2[0-3]):[0-5]\d$/.test(time)) return NaN;
++  const ms = new Date(`${date}T${time}:00+05:30`).getTime();
++  if (Number.isNaN(ms) || istParts(ms).date !== date) return NaN; // e.g. 2026-02-31
++  return ms;
++}
++
++/** Earliest bookable slot = now + 2 h, rounded UP to the next 15 minutes. */
++export function earliestSlot(now: number = Date.now()) {
++  const step = 15 * 60 * 1000;
++  const t = Math.ceil((now + MIN_LEAD_HOURS * 3600 * 1000) / step) * step;
++  return istParts(t);
++}
++
++export function formatEarliest(now: number = Date.now()): string {
++  const e = earliestSlot(now);
++  const [h, m] = e.time.split(":").map(Number);
++  const [y, mo, d] = e.date.split("-").map(Number);
++  const mon = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"][mo - 1];
++  return `${d} ${mon} ${y}, ${h % 12 === 0 ? 12 : h % 12}:${pad(m)} ${h < 12 ? "AM" : "PM"}`;
++}
++
++export function checkSlot(date: string, time: string, now: number = Date.now()): Check {
++  const ms = slotMs(date, time);
++  if (Number.isNaN(ms)) return "Please choose a valid date and time.";
++  if (ms < now + MIN_LEAD_HOURS * 3600 * 1000 - 60 * 1000) { // 1 min grace for clock drift
++    return `Bookings must be at least ${MIN_LEAD_HOURS} hours from now. Earliest available: ${formatEarliest(now)} (IST).`;
++  }
++  if (ms > now + MAX_DAYS_AHEAD * 24 * 3600 * 1000) return `You can book at most ${MAX_DAYS_AHEAD} days ahead.`;
++  return null;
++}
++
++/** Reason: max 150 words, no markup / script characters. Empty is allowed (the caller supplies a default). */
++export function checkReason(raw: string): Check {
++  const v = raw.trim();
++  if (!v) return null;
++  const words = wordCount(v);
++  if (words > MAX_REASON_WORDS) {
++    return `Please keep the reason within ${MAX_REASON_WORDS} words (you have ${words}). It is emailed to the doctor, so a short summary is enough.`;
++  }
++  if (v.length > 1500) return "The reason is too long.";
++  if (hasDangerousText(v)) return "The reason contains characters that are not allowed (such as < > { } or script text).";
++  return null;
++}
++export const cleanReason = (raw: string) => collapseSpaces(raw.replace(/[\r\n]+/g, " "));
++
++/** WhatsApp: Indian mobile; +91 / 91 / 0 prefix is accepted and removed. */
++export function checkWhatsapp(raw: string): Check {
++  if (/[^\d\s+\-()]/.test(raw)) return "WhatsApp number can contain only digits (and an optional +91).";
++  return checkMobile(normalizeIndianMobile(raw), "WhatsApp number");
++}
++export const cleanWhatsapp = (raw: string) => normalizeIndianMobile(raw);
+diff --git a/lib/validation/common.ts b/lib/validation/common.ts
+new file mode 100644
+index 0000000..9a305ce
+--- /dev/null
++++ b/lib/validation/common.ts
+@@ -0,0 +1,100 @@
++/**
++ * Validation rules shared by the browser (instant messages) and the server (real protection).
++ * Each function returns an error message, or null when the value is fine.
++ * NO server-only imports here — this file runs in both places.
++ */
++
++export type Check = string | null;
++
++/* ---------------- text helpers ---------------- */
++
++export const collapseSpaces = (v: string) => v.replace(/\s+/g, " ").trim();
++export const digitsOnly = (v: string) => v.replace(/\D/g, "");
++export const wordCount = (v: string) => (v.trim() ? v.trim().split(/\s+/).length : 0);
++
++// control chars, HTML / script brackets and template braces are never valid in any field
++const DANGEROUS = /[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F<>{}`\\]|javascript:|data:text|\bon\w+\s*=/i;
++export const hasDangerousText = (v: string) => DANGEROUS.test(v);
++
++/* ---------------- name ---------------- */
++
++const NAME_RE = /^\p{L}[\p{L}\p{M}]*(?: \p{L}[\p{L}\p{M}]*)*$/u; // letters + single spaces only
++
++export function checkName(raw: string, label = "Name"): Check {
++  const v = collapseSpaces(raw);
++  if (!v) return `${label} is required.`;
++  if (v.length < 2) return `${label} must be at least 2 characters.`;
++  if (v.length > 50) return `${label} can be at most 50 characters.`;
++  if (/\d/.test(v)) return `${label} cannot contain numbers.`;
++  if (!NAME_RE.test(v)) return `${label} can contain only letters and spaces (no special characters).`;
++  if (/(.)\1{3,}/iu.test(v)) return `${label} looks invalid (a letter is repeated too many times).`;
++  return null;
++}
++
++/* ---------------- age ---------------- */
++
++export function checkAge(raw: string): Check {
++  const v = raw.trim();
++  if (!v) return "Age is required.";
++  if (!/^\d{1,3}$/.test(v)) return "Age must be a whole number (digits only).";
++  const n = Number(v);
++  if (n < 1 || n > 150) return "Age must be between 1 and 150.";
++  return null;
++}
++
++/* ---------------- mobile / WhatsApp ---------------- */
++
++/** Indian mobile: 10 digits, starts with 6-9. */
++export function checkMobile(raw: string, label = "Mobile number"): Check {
++  const v = raw.trim();
++  if (!v) return `${label} is required.`;
++  if (!/^\d+$/.test(v)) return `${label} must contain digits only.`;
++  if (v.length !== 10) return `${label} must be exactly 10 digits.`;
++  if (!/^[6-9]/.test(v)) return `${label} must start with 6, 7, 8 or 9.`;
++  if (/^(\d)\1{9}$/.test(v)) return `${label} looks invalid.`;
++  return null;
++}
++
++/** Accepts "98765 43210", "+91 98765 43210", "919876543210" and returns the 10 digits (or the cleaned text if it can't). */
++export function normalizeIndianMobile(raw: string): string {
++  let d = digitsOnly(raw);
++  if (d.length === 12 && d.startsWith("91")) d = d.slice(2);
++  else if (d.length === 11 && d.startsWith("0")) d = d.slice(1);
++  return d;
++}
++
++/* ---------------- gender / type ---------------- */
++
++export const GENDERS = ["Female", "Male", "Other", "Prefer not to say"] as const;
++export function checkGender(v: string): Check {
++  return (GENDERS as readonly string[]).includes(v) ? null : "Please select a gender.";
++}
++
++/* ---------------- address ---------------- */
++
++export function checkPincode(raw: string): Check {
++  const v = raw.trim();
++  if (!v) return "Pincode is required.";
++  if (!/^\d+$/.test(v)) return "Pincode must contain digits only.";
++  if (v.length !== 6) return "Pincode must be exactly 6 digits.";
++  if (v.startsWith("0")) return "Pincode cannot start with 0.";
++  return null;
++}
++
++const ADDRESS_RE = /^[\p{L}\p{M}\p{N} ,.\-/#()&'’:]+$/u;
++export function checkAddressLine(raw: string): Check {
++  const v = collapseSpaces(raw);
++  if (!v) return "Address is required (house no., street, landmark).";
++  if (v.length < 5) return "Address is too short.";
++  if (v.length > 200) return "Address can be at most 200 characters.";
++  if (!ADDRESS_RE.test(v) || hasDangerousText(v)) return "Address contains characters that are not allowed.";
++  return null;
++}
++
++export function checkCityText(raw: string): Check {
++  const v = collapseSpaces(raw);
++  if (!v) return "City is required.";
++  if (v.length < 2 || v.length > 60) return "City name must be 2–60 characters.";
++  if (!/^[\p{L}\p{M} .'’-]+$/u.test(v)) return "City can contain only letters and spaces.";
++  return null;
++}
+diff --git a/lib/validation/profile.ts b/lib/validation/profile.ts
+new file mode 100644
+index 0000000..15eb418
+--- /dev/null
++++ b/lib/validation/profile.ts
+@@ -0,0 +1,57 @@
++import type { Profile } from "@/lib/types";
++import {
++  checkAddressLine, checkAge, checkCityText, checkGender, checkMobile, checkName, checkPincode, collapseSpaces,
++  type Check,
++} from "./common";
++import LOCATIONS from "@/lib/data/india-locations.json";
++
++export const OTHER = "Other";
++export const STATES: string[] = Object.keys(LOCATIONS).sort((a, b) => a.localeCompare(b));
++export const citiesOf = (state: string): string[] => (LOCATIONS as Record<string, string[]>)[state] ?? [];
++
++export type ProfileErrors = Partial<Record<keyof Profile | "city", string>>;
++
++/** Field-by-field validation of the whole profile. Empty object = valid. */
++export function validateProfile(p: Profile): ProfileErrors {
++  const e: ProfileErrors = {};
++  const put = (k: keyof Profile, c: Check) => { if (c) e[k] = c; };
++
++  put("name", checkName(p.name, "Name"));
++  put("age", checkAge(p.age));
++  put("gender", checkGender(p.gender));
++  put("phone", checkMobile(p.phone, "Phone number"));
++  put("emergencyName", checkName(p.emergencyName, "Emergency contact name"));
++  put("emergencyPhone", checkMobile(p.emergencyPhone, "Emergency contact number"));
++  if (!e.emergencyPhone && !e.phone && p.emergencyPhone === p.phone) {
++    e.emergencyPhone = "Emergency contact number must be different from your own number.";
++  }
++
++  if (!p.state || !STATES.includes(p.state)) e.state = "Please select a state.";
++  if (!p.city) e.city = "Please select a city.";
++  else if (p.city === OTHER) e.city = "Please type your city name.";
++  else if (p.state && STATES.includes(p.state) && !citiesOf(p.state).includes(p.city)) {
++    // "Other" cities are stored as the typed name, so only the format is checked
++    put("city", checkCityText(p.city));
++  }
++  put("pincode", checkPincode(p.pincode));
++  put("address", checkAddressLine(p.address));
++
++  if (p.type === "Elderly" && (p.caregiverName || p.caregiverPhone)) {
++    if (p.caregiverName) put("caregiverName", checkName(p.caregiverName, "Caregiver name"));
++    else e.caregiverName = "Caregiver name is required when a number is given.";
++    if (p.caregiverPhone) put("caregiverPhone", checkMobile(p.caregiverPhone, "Caregiver number"));
++    else e.caregiverPhone = "Caregiver number is required when a name is given.";
++  }
++  return e;
++}
++
++/** Trim + collapse spaces before sending. */
++export function cleanProfile(p: Profile): Profile {
++  return {
++    ...p,
++    name: collapseSpaces(p.name), age: p.age.trim(), phone: p.phone.trim(),
++    emergencyName: collapseSpaces(p.emergencyName), emergencyPhone: p.emergencyPhone.trim(),
++    city: collapseSpaces(p.city), pincode: p.pincode.trim(), address: collapseSpaces(p.address),
++    caregiverName: collapseSpaces(p.caregiverName), caregiverPhone: p.caregiverPhone.trim(),
++  };
++}
+diff --git a/lib/validation/vitals.ts b/lib/validation/vitals.ts
+new file mode 100644
+index 0000000..0726ab9
+--- /dev/null
++++ b/lib/validation/vitals.ts
+@@ -0,0 +1,62 @@
++import type { Vital } from "@/lib/types";
++import type { Check } from "./common";
++
++/** Realistic human ranges. Anything outside is treated as a typing mistake. */
++export const LIMITS = {
++  sys: { min: 70, max: 250 },
++  dia: { min: 40, max: 150 },
++  hr: { min: 30, max: 220 },
++  spo2: { min: 70, max: 100 },
++  temp: { min: 90, max: 108 }, // °F
++  sugar: { min: 20, max: 600 }, // mg/dL
++  weight: { min: 1, max: 300 }, // kg
++} as const;
++
++export type VitalErrors = Partial<Record<keyof Vital, string>>;
++
++const WHOLE = /^\d{1,3}$/;
++const DEC1 = /^\d{1,3}(\.\d)?$/; // one decimal at most
++
++function range(v: string, label: string, min: number, max: number, unit: string, decimal: boolean): Check {
++  const t = v.trim();
++  if (!t) return `${label} is required.`;
++  if (!(decimal ? DEC1 : WHOLE).test(t)) return `${label} must be a ${decimal ? "number (max 1 decimal)" : "whole number"}.`;
++  const n = Number(t);
++  if (n < min || n > max) return `${label} must be between ${min} and ${max} ${unit}.`;
++  return null;
++}
++
++export function checkBp(v: string): Check {
++  const m = /^(\d{2,3})\s*\/\s*(\d{2,3})$/.exec(v.trim());
++  if (!m) return "Blood pressure must look like 120/80.";
++  const s = Number(m[1]), d = Number(m[2]);
++  if (s < LIMITS.sys.min || s > LIMITS.sys.max) return `Upper (systolic) BP must be between ${LIMITS.sys.min} and ${LIMITS.sys.max}.`;
++  if (d < LIMITS.dia.min || d > LIMITS.dia.max) return `Lower (diastolic) BP must be between ${LIMITS.dia.min} and ${LIMITS.dia.max}.`;
++  if (s <= d) return "Upper BP must be higher than lower BP.";
++  return null;
++}
++
++/** "YYYY-MM-DD" must be a real date, not in the future, not older than 1 year. `todayIst` = "YYYY-MM-DD". */
++export function checkVitalDate(v: string, todayIst: string): Check {
++  if (!/^\d{4}-\d{2}-\d{2}$/.test(v)) return "Please choose a valid date.";
++  const d = new Date(`${v}T00:00:00Z`);
++  if (Number.isNaN(d.getTime()) || d.toISOString().slice(0, 10) !== v) return "Please choose a valid date.";
++  if (v > todayIst) return "Date cannot be in the future.";
++  const limit = new Date(`${todayIst}T00:00:00Z`);
++  limit.setUTCFullYear(limit.getUTCFullYear() - 1);
++  if (d < limit) return "Date cannot be older than 1 year.";
++  return null;
++}
++
++export function validateVital(v: Vital, todayIst: string): VitalErrors {
++  const e: VitalErrors = {};
++  const put = (k: keyof Vital, c: Check) => { if (c) e[k] = c; };
++  put("date", checkVitalDate(v.date, todayIst));
++  put("bp", checkBp(v.bp));
++  put("hr", range(v.hr, "Heart rate", LIMITS.hr.min, LIMITS.hr.max, "bpm", false));
++  put("spo2", range(v.spo2, "SpO₂", LIMITS.spo2.min, LIMITS.spo2.max, "%", false));
++  put("temp", range(v.temp, "Temperature", LIMITS.temp.min, LIMITS.temp.max, "°F", true));
++  put("sugar", range(v.sugar, "Blood sugar", LIMITS.sugar.min, LIMITS.sugar.max, "mg/dL", true));
++  put("weight", range(v.weight, "Weight", LIMITS.weight.min, LIMITS.weight.max, "kg", true));
++  return e;
++}
+diff --git a/mocks/profile.mock.ts b/mocks/profile.mock.ts
+index 44795d9..791a0df 100644
+--- a/mocks/profile.mock.ts
++++ b/mocks/profile.mock.ts
+@@ -1,6 +1,6 @@
+ import type { Profile } from "@/lib/types";
+ /** MOCK default profile (empty form). */
+ export const mockProfileDefault: Profile = {
+-  name: "", age: "", gender: "", phone: "", emergency: "", address: "",
++  name: "", age: "", gender: "", phone: "", emergencyName: "", emergencyPhone: "", state: "", city: "", pincode: "", address: "",
+   type: "Elderly", caregiverName: "", caregiverPhone: "",
+ };
+diff --git a/supabase/migration_profile.sql b/supabase/migration_profile.sql
+new file mode 100644
+index 0000000..f171dc0
+--- /dev/null
++++ b/supabase/migration_profile.sql
+@@ -0,0 +1,6 @@
++-- Run ONCE in Supabase -> SQL Editor. Safe to re-run.
++alter table public.profiles add column if not exists emergency_name  text not null default '';
++alter table public.profiles add column if not exists emergency_phone text not null default '';
++alter table public.profiles add column if not exists state   text not null default '';
++alter table public.profiles add column if not exists city    text not null default '';
++alter table public.profiles add column if not exists pincode text not null default '';
+diff --git a/supabase/schema.sql b/supabase/schema.sql
+index 6ab05a3..721296e 100644
+--- a/supabase/schema.sql
++++ b/supabase/schema.sql
+@@ -113,3 +113,10 @@ on conflict (id) do nothing;
+ 
+ -- patient's WhatsApp number (asked before payment, emailed to the doctor)
+ alter table public.bookings add column if not exists whatsapp text;
++
++-- structured profile fields (emergency contact + address)
++alter table public.profiles add column if not exists emergency_name  text not null default '';
++alter table public.profiles add column if not exists emergency_phone text not null default '';
++alter table public.profiles add column if not exists state   text not null default '';
++alter table public.profiles add column if not exists city    text not null default '';
++alter table public.profiles add column if not exists pincode text not null default '';

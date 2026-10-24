@@ -1,0 +1,358 @@
+diff --git a/app/api/doctor/bookings/route.ts b/app/api/doctor/bookings/route.ts
+new file mode 100644
+index 0000000..0d7d69c
+--- /dev/null
++++ b/app/api/doctor/bookings/route.ts
+@@ -0,0 +1,44 @@
++import { requireDoctor } from "@/lib/server/doctor";
++import { db } from "@/lib/server/supabase";
++import { HttpError, json, route } from "@/lib/server/http";
++import type { DoctorBooking } from "@/lib/types";
++
++/** Every booking (newest first) with the patient's profile details. Doctors only. */
++export const GET = route(async () => {
++  await requireDoctor();
++  const supabase = db();
++
++  const { data: rows, error } = await supabase.from("bookings").select("*")
++    .order("created_at", { ascending: false }).limit(300);
++  if (error) {
++    console.error("[doctor] bookings list:", error.message);
++    throw new HttpError(500, "SERVER_ERROR", "Something went wrong.");
++  }
++
++  const userIds = [...new Set((rows ?? []).map((r) => r.user_id as string))];
++  const profiles = new Map<string, Record<string, string>>();
++  if (userIds.length) {
++    const { data: ps, error: pErr } = await supabase.from("profiles")
++      .select("user_id, name, age, gender, phone, city, state").in("user_id", userIds);
++    if (pErr) console.error("[doctor] profiles:", pErr.message);
++    for (const p of ps ?? []) profiles.set(p.user_id as string, p as Record<string, string>);
++  }
++
++  const out: DoctorBooking[] = (rows ?? []).map((r) => {
++    const p = profiles.get(r.user_id as string);
++    return {
++      id: r.id, ref: r.ref, createdAt: r.created_at,
++      category: r.category, service: r.service,
++      date: r.booking_date, time: String(r.booking_time).slice(0, 5),
++      reason: r.reason ?? "", attachments: r.attachments ?? [],
++      patientName: r.patient_name || p?.name || "Patient",
++      accountName: p?.name || "", age: p?.age || "", gender: p?.gender || "",
++      city: [p?.city, p?.state].filter(Boolean).join(", "),
++      whatsapp: r.whatsapp || "", profilePhone: p?.phone || "",
++      amount: (r.amount_paise ?? 0) / 100,
++      paymentStatus: r.payment_status, status: r.status, utr: r.utr ?? "",
++      confidential: r.category === "mental-health" || r.category === "sexual-health",
++    };
++  });
++  return json(out);
++});
+diff --git a/app/api/doctor/confirm/route.ts b/app/api/doctor/confirm/route.ts
+new file mode 100644
+index 0000000..8fdcdd9
+--- /dev/null
++++ b/app/api/doctor/confirm/route.ts
+@@ -0,0 +1,16 @@
++import { z } from "zod";
++import { requireDoctor } from "@/lib/server/doctor";
++import { badRequest, json, route } from "@/lib/server/http";
++import { parseBody } from "@/lib/server/validation";
++import { confirmManualPayment } from "@/lib/server/bookings";
++
++const schema = z.object({ bookingId: z.string().uuid() });
++
++/** Doctor confirms the money arrived (same effect as the button in the email). */
++export const POST = route(async (req) => {
++  await requireDoctor();
++  const { bookingId } = await parseBody(req, schema);
++  const row = await confirmManualPayment(bookingId);
++  if (!row) throw badRequest("Booking not found.");
++  return json({ id: row.id, ref: row.ref, paymentStatus: row.payment_status, status: row.status });
++});
+diff --git a/app/doctor/page.tsx b/app/doctor/page.tsx
+new file mode 100644
+index 0000000..2c59035
+--- /dev/null
++++ b/app/doctor/page.tsx
+@@ -0,0 +1,160 @@
++'use client'
++import AppNav from '../../components/AppNav'
++import Footer from '../../components/Footer'
++import { EmptyState, ErrorState, LoadingState } from '../../components/States'
++import { apiRequest } from '../../lib/api/client'
++import { API_ENDPOINTS } from '../../lib/api/endpoints'
++import { ApiError } from '../../lib/api/errors'
++import { ENV } from '../../lib/config/env'
++import { useResource } from '../../lib/hooks/useResource'
++import type { DoctorBooking } from '../../lib/types'
++import { CheckCircle2, MessageCircle, RefreshCw, Search } from 'lucide-react'
++import { useMemo, useState } from 'react'
++
++const load = () => apiRequest<DoctorBooking[]>(API_ENDPOINTS.doctor.bookings)
++
++type Tab = 'action' | 'unpaid' | 'confirmed' | 'all'
++const TABS: [Tab, string][] = [['action', 'Needs action'], ['unpaid', 'Unpaid'], ['confirmed', 'Confirmed'], ['all', 'All']]
++
++const waLink = (n: string) => {
++  const d = n.replace(/\D/g, '')
++  const full = d.length === 10 ? `91${d}` : d
++  return full.length >= 11 ? `https://wa.me/${full}` : null
++}
++const when = (iso: string) => new Date(iso).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', dateStyle: 'medium', timeStyle: 'short' })
++const label = (b: DoctorBooking) =>
++  b.paymentStatus === 'paid' ? 'Confirmed' : b.paymentStatus === 'submitted' ? 'Payment to verify' : 'Unpaid'
++
++export default function Page() {
++  const { data, status, error, reload } = useResource<DoctorBooking[]>(load, [])
++  const [tab, setTab] = useState<Tab>('action')
++  const [q, setQ] = useState('')
++  const [busy, setBusy] = useState<string | null>(null)
++  const [msg, setMsg] = useState<string | null>(null)
++  const [actionErr, setActionErr] = useState<string | null>(null)
++
++  const forbidden = status === 'error' && /only for doctors|permission/i.test(error ?? '')
++
++  const counts = useMemo(() => ({
++    action: data.filter(b => b.paymentStatus === 'submitted').length,
++    unpaid: data.filter(b => b.paymentStatus === 'unpaid').length,
++    confirmed: data.filter(b => b.paymentStatus === 'paid').length,
++    all: data.length,
++  }), [data])
++
++  const shown = useMemo(() => {
++    const t = q.trim().toLowerCase()
++    return data.filter(b => {
++      if (tab === 'action' && b.paymentStatus !== 'submitted') return false
++      if (tab === 'unpaid' && b.paymentStatus !== 'unpaid') return false
++      if (tab === 'confirmed' && b.paymentStatus !== 'paid') return false
++      if (!t) return true
++      return [b.ref, b.patientName, b.accountName, b.whatsapp, b.profilePhone, b.utr].some(v => v.toLowerCase().includes(t))
++    })
++  }, [data, tab, q])
++
++  async function confirm(b: DoctorBooking) {
++    const ok = window.confirm(
++      `Confirm ONLY if you have seen ₹${b.amount} (UTR ${b.utr || 'n/a'}) in your GPay.\n\nConfirm payment for ${b.ref}?`)
++    if (!ok) return
++    setBusy(b.id); setActionErr(null); setMsg(null)
++    try {
++      await apiRequest(API_ENDPOINTS.doctor.confirm, { method: 'POST', body: { bookingId: b.id } })
++      setMsg(`${b.ref} confirmed.`)
++      await reload()
++    } catch (e) {
++      setActionErr(e instanceof ApiError ? e.message : 'Could not confirm. Please try again.')
++    } finally { setBusy(null) }
++  }
++
++  return (
++    <>
++      <AppNav />
++      <main className="main">
++        <div className="eyebrow">Doctor panel</div>
++        <h1 className="h1">Bookings &amp; patients</h1>
++        <p className="sub">All patient bookings in one place. Confirm a payment only after you have seen it in your GPay.</p>
++
++        {ENV.USE_MOCKS && (
++          <div className="error-state" role="alert" style={{ marginTop: 16 }}>
++            The doctor panel needs the real backend. Set NEXT_PUBLIC_USE_MOCKS=false.
++          </div>
++        )}
++
++        {forbidden ? (
++          <div className="card" style={{ marginTop: 24 }}>
++            <b>This area is only for doctors.</b>
++            <p className="muted">If you are the doctor, ask the admin to give your account the “doctor” role.</p>
++          </div>
++        ) : (
++          <>
++            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 24, alignItems: 'center' }}>
++              {TABS.map(([id, name]) => (
++                <button key={id} type="button" className={`btn ${tab === id ? 'btn-primary' : 'btn-secondary'}`} onClick={() => setTab(id)}>
++                  {name} ({counts[id]})
++                </button>
++              ))}
++              <button type="button" className="btn btn-secondary" onClick={reload} aria-label="Refresh"><RefreshCw size={15} /> Refresh</button>
++            </div>
++
++            <div className="field" style={{ marginTop: 14, maxWidth: 420 }}>
++              <label htmlFor="d-search"><Search size={14} style={{ verticalAlign: '-2px' }} /> Search</label>
++              <input id="d-search" value={q} maxLength={60} placeholder="Name, ref (AM-…), phone or UTR" onChange={e => setQ(e.target.value)} />
++            </div>
++
++            {actionErr && <div className="error-state" role="alert" style={{ marginTop: 14 }}>{actionErr}</div>}
++            {msg && <div className="toast" role="status">{msg}</div>}
++
++            <div style={{ display: 'grid', gap: 14, marginTop: 18 }}>
++              {status === 'loading' && <div className="card"><LoadingState rows={4} /></div>}
++              {status === 'error' && !forbidden && <ErrorState message={error ?? 'Could not load bookings.'} onRetry={reload} />}
++              {status === 'success' && !shown.length && <EmptyState>No bookings in this view.</EmptyState>}
++              {status === 'success' && shown.map(b => {
++                const wa = waLink(b.whatsapp)
++                return (
++                  <div className="card" key={b.id}>
++                    <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap' }}>
++                      <div>
++                        <b>{b.patientName}</b>
++                        {b.accountName && b.accountName !== b.patientName && <span className="muted"> (account: {b.accountName})</span>}
++                        <div className="muted">
++                          {[b.age && `${b.age} yrs`, b.gender, b.city].filter(Boolean).join(' · ') || 'Profile not filled'}
++                        </div>
++                      </div>
++                      <span className="pill">{label(b)}</span>
++                    </div>
++
++                    <div className="muted" style={{ marginTop: 10, lineHeight: 1.7 }}>
++                      Ref: <b>{b.ref}</b> · Booked {when(b.createdAt)}<br />
++                      Service: {b.confidential ? 'Confidential consultation' : b.service}<br />
++                      Slot: <b>{b.date} at {b.time}</b><br />
++                      Fee: ₹{b.amount}{b.utr ? <> · UTR: <b>{b.utr}</b></> : null}<br />
++                      WhatsApp: <b>{b.whatsapp || 'not provided'}</b>
++                      {b.profilePhone && <> · Profile phone: {b.profilePhone}</>}
++                      {b.reason && <><br />Reason: {b.reason}</>}
++                      {b.attachments.length > 0 && <><br />Files: {b.attachments.join(', ')}</>}
++                    </div>
++
++                    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 14 }}>
++                      {wa && (
++                        <a className="btn btn-secondary" href={wa} target="_blank" rel="noopener noreferrer">
++                          <MessageCircle size={15} /> WhatsApp patient
++                        </a>
++                      )}
++                      {b.paymentStatus === 'submitted' && (
++                        <button className="btn btn-primary" disabled={busy === b.id} onClick={() => confirm(b)}>
++                          <CheckCircle2 size={15} /> {busy === b.id ? 'Confirming…' : 'Confirm payment received'}
++                        </button>
++                      )}
++                    </div>
++                  </div>
++                )
++              })}
++            </div>
++          </>
++        )}
++        <Footer />
++      </main>
++    </>
++  )
++}
+diff --git a/components/AppNav.tsx b/components/AppNav.tsx
+index 8d29109..ab53328 100644
+--- a/components/AppNav.tsx
++++ b/components/AppNav.tsx
+@@ -9,6 +9,7 @@ import {
+   FileText,
+   HeartPulse,
+   Home,
++  Stethoscope,
+   Menu,
+   Moon,
+   Plus,
+@@ -16,7 +17,7 @@ import {
+   UserRound,
+   X,
+ } from "lucide-react";
+-import { UserButton } from "@clerk/nextjs";
++import { UserButton, useUser } from "@clerk/nextjs";
+ import FamilySwitcher from "./FamilySwitcher";
+ 
+ const items = [
+@@ -29,6 +30,10 @@ const items = [
+ 
+ export default function AppNav() {
+   const path = usePathname();
++  const { user } = useUser();
++  // Cosmetic only: the real protection is on the server (see lib/server/doctor.ts).
++  const isDoctor = (user?.publicMetadata as { role?: string } | undefined)?.role === "doctor";
++  const navItems = isDoctor ? [...items, ["/doctor", "Doctor Panel", Stethoscope] as const] : items;
+   const [dark, setDark] = useState(false);
+   const [menuOpen, setMenuOpen] = useState(false); // mobile / tablet drawer
+ 
+@@ -156,7 +161,7 @@ export default function AppNav() {
+         <div className="nav-label">Care space</div>
+ 
+         <nav className="nav-list">
+-          {items.map(([href, label, Icon]) => (
++          {navItems.map(([href, label, Icon]) => (
+             <Link
+               key={href}
+               href={href}
+@@ -226,7 +231,7 @@ export default function AppNav() {
+         </div>
+ 
+         <nav className="nav-list">
+-          {items.map(([href, label, Icon]) => (
++          {navItems.map(([href, label, Icon]) => (
+             <Link
+               key={href}
+               href={href}
+diff --git a/lib/api/endpoints.ts b/lib/api/endpoints.ts
+index 279d0ea..bcdbe5c 100644
+--- a/lib/api/endpoints.ts
++++ b/lib/api/endpoints.ts
+@@ -14,5 +14,6 @@ export const API_ENDPOINTS = {
+   bookings: { latest: "/bookings/latest", create: "/bookings" },
+   payments: { order: "/payments/order", verify: "/payments/verify", submit: "/payments/submit" },
+   pricing: "/pricing",
++  doctor: { bookings: "/doctor/bookings", confirm: "/doctor/confirm" },
+   ai: { chat: "/ai/chat", healthSummary: "/ai/health-summary" },
+ } as const;
+diff --git a/lib/server/doctor.ts b/lib/server/doctor.ts
+new file mode 100644
+index 0000000..5bf98e9
+--- /dev/null
++++ b/lib/server/doctor.ts
+@@ -0,0 +1,19 @@
++import "server-only";
++import { auth, clerkClient } from "@clerk/nextjs/server";
++import { HttpError, unauthorized } from "./http";
++
++/**
++ * Only a signed-in user whose Clerk "Public metadata" says {"role":"doctor"} gets through.
++ * This is the REAL protection — hiding the page link is just cosmetic.
++ * Returns the doctor's Clerk user id.
++ */
++export async function requireDoctor(): Promise<string> {
++  const { userId } = await auth();
++  if (!userId) throw unauthorized();
++  const client = await clerkClient();
++  const user = await client.users.getUser(userId);
++  if ((user.publicMetadata as { role?: string } | undefined)?.role !== "doctor") {
++    throw new HttpError(403, "FORBIDDEN", "This area is only for doctors.");
++  }
++  return userId;
++}
+diff --git a/lib/types.ts b/lib/types.ts
+index e019a77..3f3ff89 100644
+--- a/lib/types.ts
++++ b/lib/types.ts
+@@ -36,6 +36,17 @@ export interface Booking {
+   amount?: number;
+ }
+ 
++/** One row of the doctor dashboard (see /api/doctor/bookings). */
++export interface DoctorBooking {
++  id: string; ref: string; createdAt: string;
++  category: string; service: string; date: string; time: string;
++  reason: string; attachments: string[];
++  patientName: string; accountName: string; age: string; gender: string; city: string;
++  whatsapp: string; profilePhone: string;
++  amount: number; paymentStatus: "unpaid" | "submitted" | "paid"; status: string; utr: string;
++  confidential: boolean;
++}
++
+ export interface FamilyMember { id: string; name: string; relation: string }
+ 
+ export interface AiMessage { role: "user" | "assistant"; content: string }
+diff --git a/middleware.ts b/middleware.ts
+index d9ec10e..4788dd9 100644
+--- a/middleware.ts
++++ b/middleware.ts
+@@ -6,6 +6,7 @@ const isProtected = createRouteMatcher([
+   '/vitals(.*)',
+   '/documents(.*)',
+   '/booking(.*)',
++  '/doctor(.*)',
+ ])
+ 
+ export default clerkMiddleware(async (auth, req) => {

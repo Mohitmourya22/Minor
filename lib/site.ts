@@ -6,8 +6,8 @@ export const SITE = {
   name: "AayuMarg",
   tagline: "We care",
 
-  // Shown to the patient ONLY after payment (not on the public site).
-  doctorPhone: "+91-7000698030",
+  // Clinic WhatsApp (footer + post-booking contact).
+  doctorPhone: "+91 9243545455",
 
   email: "info@aayumarg.com",
 
