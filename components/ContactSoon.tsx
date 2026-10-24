@@ -2,7 +2,7 @@ import { SITE } from "@/lib/site";
 
 /** Shown to the patient after payment. Opens WhatsApp chat (not a call). */
 export default function ContactSoon() {
-  const digits = SITE.doctorPhone.replace(/\D/g, ""); // "917000698030"
+  const digits = SITE.doctorPhone.replace(/\D/g, "");
   const waLink = `https://wa.me/${digits}`;
   return (
     <div className="muted" style={{ marginTop: 10 }}>
