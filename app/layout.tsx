@@ -6,11 +6,11 @@ import FloatingWhatsApp from '../components/FloatingWhatsApp'
 import './globals.css'
 
 export const metadata: Metadata = {
-  title: { default: 'AayuMarg — We care', template: '%s · AayuMarg' },
+  title: { default: 'AayuMarg — "We care"', template: '%s · AayuMarg' },
   description:
     'AayuMarg is a calm digital space for families to book OPD consultations (elderly care, second opinion, mental health, sexual health) and manage care profiles, health vitals and medical records in one place.',
   openGraph: {
-    title: 'AayuMarg — We care',
+    title: 'AayuMarg — "We care"',
     description: 'Care, connected. Simple enough for everyone.',
     siteName: 'AayuMarg',
     type: 'website',

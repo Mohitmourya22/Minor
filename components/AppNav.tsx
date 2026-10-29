@@ -130,7 +130,7 @@ export default function AppNav() {
             />
             <span className="brand-text">
               <span className="brand-name">AayuMarg</span>
-              <span className="brand-tag">We care</span>
+              <span className="brand-tag">"We care"</span>
             </span>
           </Link>
         </div>

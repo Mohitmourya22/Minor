@@ -259,7 +259,7 @@ index b1cd1b0..a405f3f 100644
 +++ b/lib/site.ts
 @@ -6,8 +6,8 @@ export const SITE = {
    name: "AayuMarg",
-   tagline: "We care",
+   tagline: "\"We care\""
  
 -  // Keep the +91- format. A real number becomes a tap-to-call link in the footer.
 -  phone: "+91-7000698030",

@@ -4,7 +4,7 @@
  */
 export const SITE = {
   name: "AayuMarg",
-  tagline: "We care",
+  tagline: '"We care"',
 
   // Clinic WhatsApp (footer + post-booking contact).
   doctorPhone: "+91 9243545455",
