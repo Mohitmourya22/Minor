@@ -1,8 +1,9 @@
-"use client";
+﻿"use client";
 import Image from "next/image";
 import { useEffect, useRef, useState } from "react";
-import { Camera, FileUp, Lock, X, CalendarDays } from "lucide-react";
-import { CATEGORIES, type CareCategory } from "@/lib/categories";
+import { Camera, FileUp, Lock, X, CalendarDays, ArrowRight } from "lucide-react";
+import { CATEGORIES } from "@/lib/categories";
+import type { CareCategory } from "@/lib/categories";
 import { useFamily } from "@/lib/family/FamilyContext";
 import { uploadDocuments } from "@/lib/services/documents.service";
 import { getFees } from "@/lib/services/pricing.service";
@@ -43,7 +44,7 @@ export default function BookingCategories({ book, saving, saveError, initialCate
             <span className="category-body">
               <b>{c.title}</b>
               <span className="muted">{c.blurb}</span>
-              <span className="category-cta"><CalendarDays size={14} /> Book OPD</span>
+              <span className="category-cta-btn"><CalendarDays size={14} /> Book Now <ArrowRight size={12} /></span>
             </span>
           </button>
         ))}

@@ -1,4 +1,4 @@
-'use client'
+﻿'use client'
 import Link from 'next/link'
 import AppNav from '../../components/AppNav'
 import Footer from '../../components/Footer'
@@ -6,11 +6,12 @@ import Testimonials from '../../components/Testimonials'
 import { useDocuments } from '../../lib/hooks/useDocuments'
 import { useBooking } from '../../lib/hooks/useBooking'
 import { useVitals } from '../../lib/hooks/useVitals'
-import { CalendarDays, FileUp, HeartPulse, ShieldCheck, UserRound, ArrowRight } from 'lucide-react'
+import { CalendarDays, FileUp, HeartPulse, ShieldCheck, UserRound, ArrowRight, FileCheck2 } from 'lucide-react'
 import { useUser } from '@clerk/nextjs'
 import BookingCategories from '../../components/BookingCategories'
 import { useFamily } from '../../lib/family/FamilyContext'
 import { bookingLabel } from '../../lib/categories'
+import { usePrescriptions } from '../../lib/hooks/usePrescriptions'
 
 export default function Dashboard() {
   const { user } = useUser()
@@ -18,6 +19,7 @@ export default function Dashboard() {
   const { booking, book, saving, saveError, reload } = useBooking()
   const { active } = useFamily()
   const { vitals } = useVitals()
+  const { prescriptions, status: rxStatus } = usePrescriptions()
 
   const latest = vitals[0]
   const bookedText = booking
@@ -73,6 +75,39 @@ export default function Dashboard() {
             <div className="muted">Authentication</div>
             <div className="metric" style={{ fontSize: 17, marginTop: 16 }}>Account Security: Active &amp; Verified</div>
           </div>
+        </div>
+
+        {/* My Prescriptions */}
+        <div className="section-head">
+          <h2>My Prescriptions</h2>
+          <Link href="/prescription" className="btn btn-secondary">
+            View all <ArrowRight size={16} />
+          </Link>
+        </div>
+        <div className="card">
+          <div className="icon-box"><FileCheck2 size={20} /></div>
+          <div className="card-title" style={{ marginTop: 16 }}>Digital Prescriptions</div>
+          {rxStatus === 'loading' && <div className="muted" style={{ marginTop: 10 }}>Loading\u2026</div>}
+          {rxStatus === 'success' && prescriptions.length === 0 && (
+            <div className="muted" style={{ marginTop: 10, fontSize: 13 }}>
+              No prescriptions yet. They will appear here automatically after your consultation.
+            </div>
+          )}
+          {rxStatus === 'success' && prescriptions.length > 0 && (
+            <>
+              <div className="metric">{prescriptions.length}<small> prescription{prescriptions.length !== 1 ? 's' : ''}</small></div>
+              <div className="list" style={{ marginTop: 14 }}>
+                {prescriptions.slice(0, 3).map((rx) => (
+                  <div key={rx.rxRef || rx.id} className="list-item" style={{ flexDirection: 'column', alignItems: 'flex-start', gap: 2 }}>
+                    <b style={{ fontSize: 13 }}>Rx {rx.date}</b>
+                    <span className="muted" style={{ fontSize: 12 }}>
+                      {rx.medicines?.length || 0} medicine{rx.medicines?.length !== 1 ? 's' : ''} \u00b7 {rx.doctor?.name || 'AayuMarg Doctor'}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </>
+          )}
         </div>
 
         <div className="section-head">

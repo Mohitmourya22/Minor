@@ -1,11 +1,9 @@
 import type { Metadata, Viewport } from 'next'
-import { Inter } from 'next/font/google'
 import { ClerkProvider } from '@clerk/nextjs'
 import AuthTokenBridge from '../components/AuthTokenBridge'
 import { FamilyProvider } from '../lib/family/FamilyContext'
+import FloatingWhatsApp from '../components/FloatingWhatsApp'
 import './globals.css'
-
-const inter = Inter({ subsets: ['latin'], variable: '--font-sans', display: 'swap' })
 
 export const metadata: Metadata = {
   title: { default: 'AayuMarg — We care', template: '%s · AayuMarg' },
@@ -29,11 +27,13 @@ export const viewport: Viewport = {
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
-    <html lang="en" className={inter.variable}>
+    <html lang="en">
       <body>
         <ClerkProvider afterSignOutUrl="/">
           <AuthTokenBridge />
           <FamilyProvider>{children}</FamilyProvider>
+          {/* Global floating WhatsApp button — visible on every page */}
+          <FloatingWhatsApp />
         </ClerkProvider>
       </body>
     </html>

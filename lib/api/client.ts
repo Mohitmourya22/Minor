@@ -16,7 +16,7 @@ interface RequestOptions extends Omit<RequestInit, "body"> {
 
 /**
  * The ONLY place that talks to the backend (fetch lives here, nowhere else).
- * - attaches Authorization: Bearer <Clerk token>
+ * - attaches Authorization: Bearer <token>
  * - JSON handling, timeout, normalized errors
  */
 export async function apiRequest<T>(endpoint: string, options: RequestOptions = {}): Promise<T> {
@@ -26,7 +26,9 @@ export async function apiRequest<T>(endpoint: string, options: RequestOptions = 
 
   const finalHeaders = new Headers(headers);
   const token = tokenProvider ? await tokenProvider() : null;
-  if (token) finalHeaders.set("Authorization", `Bearer ${token}`);
+  if (token) {
+    finalHeaders.set("Authorization", `Bearer ${token}`);
+  }
 
   let payload: BodyInit | undefined;
   if (body instanceof FormData) {

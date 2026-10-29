@@ -33,7 +33,16 @@ export default function AppNav() {
   const { user } = useUser();
   // Cosmetic only: the real protection is on the server (see lib/server/doctor.ts).
   const isDoctor = (user?.publicMetadata as { role?: string } | undefined)?.role === "doctor";
-  const navItems = isDoctor ? [...items, ["/doctor", "Doctor Panel", Stethoscope] as const] : items;
+  const navItems = isDoctor
+    ? [
+        ...items,
+        ["/doctor", "Doctor Panel", Stethoscope] as const,
+        ["/prescription", "Rx Generator", FileText] as const,
+      ]
+    : [
+        ...items,
+        ["/prescription", "Rx Generator", FileText] as const,
+      ];
   const [dark, setDark] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false); // mobile / tablet drawer
 

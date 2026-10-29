@@ -1,4 +1,6 @@
-'use client'
+﻿'use client'
+
+export const dynamic = 'force-dynamic'
 import AppNav from '../../components/AppNav'
 import Footer from '../../components/Footer'
 import { EmptyState, ErrorState, LoadingState } from '../../components/States'

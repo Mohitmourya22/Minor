@@ -1,8 +1,9 @@
-import Link from "next/link";
+﻿import Link from "next/link";
 import Image from "next/image";
 import Footer from "../components/Footer";
 import Testimonials from "../components/Testimonials";
 import { CATEGORIES } from "../lib/categories";
+import { SITE } from "../lib/site";
 import { Show, SignInButton, SignUpButton } from "@clerk/nextjs";
 import {
   ArrowRight,
@@ -21,10 +22,12 @@ import {
 const IMG = {
   hero: "/assets/images/doctor_stethoscope_checkup_hero.webp",
   elderly: "/assets/images/elderly_care_female_doctor_with_senior.webp",
-  nurse: "/assets/images/elderly_care_female_doctor_with_senior.webp",
+  nurse: "/assets/images/second_opinion_woman_doctor_tablet.webp",
   opd: "/assets/images/mental_health_male_doctor_consultation.webp",
   wellbeing: "/assets/images/second_opinion_woman_doctor_tablet.webp",
 };
+
+const WA_LINK = `https://wa.me/${SITE.doctorPhone.replace(/\D/g, "")}`;
 
 export default function Home() {
   return (
@@ -39,7 +42,6 @@ export default function Home() {
 
           <div style={{ position: "relative", zIndex: 1 }}>
             {/* HEADER */}
-            {/* wraps onto 2 lines on very small phones instead of overflowing */}
             <div className="land-header">
               <div className="brand">
                 <Image
@@ -81,40 +83,92 @@ export default function Home() {
             </div>
 
             {/* HERO */}
-            {/* 1 column on phones, 2 columns from md (see .hero-grid in globals.css) */}
             <div className="hero-grid">
               {/* LEFT: COPY */}
               <div>
                 <div className="eyebrow">
                   <Sparkles size={13} />
-                  &nbsp;Family care platform · We care
+                  &nbsp;Family care platform &middot; We care
                 </div>
 
+                {/* ── Req 1: Bold "AayuMarg We Care" heading, no dense paragraph ── */}
                 <h1
                   className="h1"
                   style={{
-                    fontSize: "clamp(32px, 5.4vw, 62px)",
-                    marginTop: 16,
+                    fontSize: "clamp(30px, 5.2vw, 60px)",
+                    marginTop: 14,
+                    lineHeight: 1.12,
                   }}
                 >
-                  Care, connected.
-                  <br />
-                  <span className="grad-text">Simple enough for everyone.</span>
+                  <span style={{ display: "inline-flex", alignItems: "center", gap: 16 }}>
+                    <span>
+                      <span className="grad-text">AayuMarg</span>
+                      <br />
+                      <span style={{ fontWeight: 900, letterSpacing: "-0.03em" }}>We Care.</span>
+                    </span>
+                    <Image
+                      src="/AyuMarg Healthcare Logo.png"
+                      alt="AayuMarg logo"
+                      width={200}
+                      height={200}
+                      className="hero-logo-img"
+                      style={{ objectFit: "contain" }}
+                    />
+                  </span>
                 </h1>
 
-                <p className="sub">
-                  Book OPD consultations — elderly care, second opinion, mental
-                  health and sexual health — and keep your family&apos;s vitals
-                  and medical records together, all in one warm, easy place
-                  built for AayuMarg families.
+                {/* Sub-tagline replaces the removed dense paragraph */}
+                <p
+                  className="hero-tagline"
+                  style={{
+                    marginTop: 14,
+                    fontSize: "clamp(15px, 2vw, 18px)",
+                    fontWeight: 700,
+                    color: "var(--muted)",
+                    lineHeight: 1.5,
+                  }}
+                >
+                  OPD consultations &bull; Family health records &bull; 24&times;7 care &mdash; all in one place.
                 </p>
+
+                {/* ── Req 2: WhatsApp Direct Inquiry Widget ── */}
+                <a
+                  href={WA_LINK}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="wa-widget"
+                  aria-label={`Chat on WhatsApp: ${SITE.doctorPhone}`}
+                >
+                  {/* WhatsApp SVG icon */}
+                  <svg
+                    viewBox="0 0 32 32"
+                    width="36"
+                    height="36"
+                    fill="none"
+                    aria-hidden="true"
+                    style={{ flexShrink: 0 }}
+                  >
+                    <circle cx="16" cy="16" r="16" fill="#25D366" />
+                    <path
+                      d="M23.5 19.9c-.3-.15-1.77-.87-2.04-.97-.27-.1-.47-.15-.67.15-.2.3-.77.97-.95 1.17-.18.2-.35.22-.65.07-1.77-.88-2.93-1.57-4.1-3.56-.31-.53.31-.5.89-1.66.1-.2.05-.37-.03-.52-.07-.15-.67-1.6-.92-2.2-.24-.57-.49-.5-.67-.5-.17 0-.37-.02-.57-.02s-.52.07-.79.37c-.27.3-1.03 1.01-1.03 2.45s1.06 2.84 1.2 3.04c.15.2 2.07 3.17 5.04 4.44.7.3 1.25.48 1.68.62.7.22 1.34.19 1.85.12.56-.08 1.77-.72 2.02-1.42.25-.7.25-1.29.17-1.42-.07-.12-.27-.19-.57-.34z"
+                      fill="#fff"
+                    />
+                  </svg>
+
+                  <div className="wa-widget-text">
+                    <span className="wa-widget-label">Chat with us on WhatsApp</span>
+                    <span className="wa-widget-number">{SITE.doctorPhone}</span>
+                  </div>
+
+                  <span className="wa-widget-badge">Tap to chat</span>
+                </a>
 
                 <div
                   style={{
                     display: "flex",
                     gap: 10,
                     flexWrap: "wrap",
-                    marginTop: 25,
+                    marginTop: 22,
                   }}
                 >
                   <Show when="signed-out">
@@ -147,7 +201,7 @@ export default function Home() {
                   </span>
                   <span className="trust-item">
                     <Clock size={15} color="var(--primary)" />
-                    24×7 care access
+                    24&times;7 care access
                   </span>
                   <span className="trust-item">
                     <BadgeCheck size={15} color="var(--primary)" />
@@ -236,7 +290,7 @@ export default function Home() {
               </div>
             </div>
 
-            {/* SERVICES — shown to everyone (no login needed) so visitors see what we offer */}
+            {/* SERVICES */}
             <div id="services" className="section-head" style={{ marginTop: 6 }}>
               <div>
                 <div className="eyebrow">Our services</div>
@@ -249,12 +303,13 @@ export default function Home() {
               </div>
             </div>
 
+            {/* ── Req 3: Enhanced OPD booking cards with glow CTA ── */}
             <div className="category-grid">
               {CATEGORIES.map((c) => (
                 <Link
                   key={c.id}
                   href={`/booking?category=${c.id}`}
-                  className={`category-card glass ${
+                  className={`category-card glass opd-card-glow ${
                     c.id === "second-opinion" ? "second-opinion-card" : ""
                   }`}
                 >
@@ -275,8 +330,11 @@ export default function Home() {
                   <span className="category-body">
                     <b>{c.title}</b>
                     <span className="muted">{c.blurb}</span>
-                    <span className="category-cta">
-                      <CalendarDays size={14} /> Book OPD
+                    {/* Enhanced CTA button */}
+                    <span className="category-cta-btn">
+                      <CalendarDays size={14} />
+                      Book Now
+                      <ArrowRight size={13} />
                     </span>
                   </span>
                 </Link>
@@ -286,7 +344,7 @@ export default function Home() {
             <Show when="signed-out">
               <div className="services-cta">
                 <SignUpButton mode="modal">
-                  <button className="btn btn-primary">
+                  <button className="btn btn-primary services-cta-btn">
                     Sign up to book an OPD visit
                     <ArrowRight size={17} />
                   </button>
@@ -300,7 +358,7 @@ export default function Home() {
               </div>
             </Show>
 
-            {/* CARE TOOLS — what you get inside your care space */}
+            {/* CARE TOOLS */}
             <div className="section-head" style={{ marginTop: 40 }}>
               <div>
                 <div className="eyebrow">Your care space</div>
@@ -316,7 +374,7 @@ export default function Home() {
                 <div className="feature-card-body">
                   <div className="card-title">Family profiles</div>
                   <div className="muted" style={{ marginTop: 6 }}>
-                    Name, age, contact, address and caregiver details — kept
+                    Name, age, contact, address and caregiver details &mdash; kept
                     together and easy to update.
                   </div>
                 </div>
@@ -329,7 +387,7 @@ export default function Home() {
                 <div className="feature-card-body">
                   <div className="card-title">Vitals Vault</div>
                   <div className="muted" style={{ marginTop: 6 }}>
-                    Blood pressure, heart rate, SpO₂, temperature, sugar and
+                    Blood pressure, heart rate, SpO&#x2082;, temperature, sugar and
                     weight, all in one place.
                   </div>
                 </div>
@@ -362,7 +420,7 @@ export default function Home() {
               </div>
             </div>
 
-            {/* TESTIMONIALS (dummy data, see lib/testimonials.ts) */}
+            {/* TESTIMONIALS */}
             <Testimonials />
 
             <Footer />

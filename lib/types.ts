@@ -52,3 +52,5 @@ export interface FamilyMember { id: string; name: string; relation: string }
 export interface AiMessage { role: "user" | "assistant"; content: string }
 export interface AiChatResponse { reply: string }
 export interface AiHealthSummary { summary: string; generatedAt: string }
+
+export * from "./types/prescription";

@@ -1,4 +1,5 @@
 'use client'
+import Link from 'next/link'
 import AppNav from '../../components/AppNav'
 import Footer from '../../components/Footer'
 import { EmptyState, ErrorState, LoadingState } from '../../components/States'
@@ -8,7 +9,7 @@ import { ApiError } from '../../lib/api/errors'
 import { ENV } from '../../lib/config/env'
 import { useResource } from '../../lib/hooks/useResource'
 import type { DoctorBooking } from '../../lib/types'
-import { CheckCircle2, MessageCircle, RefreshCw, Search } from 'lucide-react'
+import { CheckCircle2, MessageCircle, RefreshCw, Search, FileText } from 'lucide-react'
 import { useMemo, useState } from 'react'
 
 const load = () => apiRequest<DoctorBooking[]>(API_ENDPOINTS.doctor.bookings)
@@ -95,6 +96,9 @@ export default function Page() {
                 </button>
               ))}
               <button type="button" className="btn btn-secondary" onClick={reload} aria-label="Refresh"><RefreshCw size={15} /> Refresh</button>
+              <Link href="/prescription" className="btn btn-primary" style={{ marginLeft: 'auto' }}>
+                <FileText size={15} /> Write Prescription
+              </Link>
             </div>
 
             <div className="field" style={{ marginTop: 14, maxWidth: 420 }}>
@@ -136,6 +140,12 @@ export default function Page() {
                     </div>
 
                     <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 14 }}>
+                      <Link
+                        className="btn btn-primary"
+                        href={`/prescription?patientName=${encodeURIComponent(b.patientName)}&age=${encodeURIComponent(b.age || '')}&gender=${encodeURIComponent(b.gender || '')}&phone=${encodeURIComponent(b.whatsapp || b.profilePhone || '')}&history=${encodeURIComponent(b.reason || '')}&ref=${encodeURIComponent(b.ref)}`}
+                      >
+                        <FileText size={15} /> Write Prescription
+                      </Link>
                       {wa && (
                         <a className="btn btn-secondary" href={wa} target="_blank" rel="noopener noreferrer">
                           <MessageCircle size={15} /> WhatsApp patient

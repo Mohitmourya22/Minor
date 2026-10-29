@@ -1,5 +1,6 @@
-import "server-only";
+﻿import "server-only";
 import type { Booking, CategoryId, MedicalDocument, Profile, Vital } from "@/lib/types";
+import type { PrescriptionData } from "@/lib/types/prescription";
 
 /* ---------- row types (database shape) ---------- */
 
@@ -60,3 +61,28 @@ export function toBooking(r: BookingRow): Booking {
     amount: r.amount_paise / 100, // rupees, for display
   };
 }
+
+
+/* ---------- prescriptions ---------- */
+
+export interface PrescriptionRow {
+  id: string;
+  rx_ref: string;
+  doctor_id: string;
+  patient_email: string;
+  patient_name: string;
+  patient_age: string;
+  patient_gender: string;
+  patient_phone: string;
+  booking_ref: string | null;
+  data: PrescriptionData;
+  issued_date: string;
+  created_at: string;
+}
+
+export const toPrescription = (r: PrescriptionRow): PrescriptionData & { id: string; rxRef: string; issuedDate: string } => ({
+  ...r.data,
+  id: r.id,
+  rxRef: r.rx_ref,
+  issuedDate: r.issued_date,
+});
