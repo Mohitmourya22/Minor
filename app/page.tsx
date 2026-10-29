@@ -56,7 +56,7 @@ export default function Home() {
                 />
                 <span className="brand-text">
                   <span className="brand-name">AayuMarg</span>
-                  <span className="brand-tag">"We care"</span>
+                  <span className="brand-tag">“We care”</span>
                 </span>
               </div>
 
@@ -88,7 +88,7 @@ export default function Home() {
               <div>
                 <div className="eyebrow">
                   <Sparkles size={13} />
-                  &nbsp;Family care platform &middot; "We care"
+                  &nbsp;Family care platform &middot; “We care”
                 </div>
 
                 {/* ── Req 1: Bold "AayuMarg We Care" heading, no dense paragraph ── */}
@@ -104,7 +104,7 @@ export default function Home() {
                     <span>
                       <span className="grad-text">AayuMarg</span>
                       <br />
-                      <span style={{ fontWeight: 900, letterSpacing: "-0.03em" }}>We Care.</span>
+                      <span style={{ fontWeight: 900, letterSpacing: "-0.03em", color: "var(--primary)" }}>"We Care."</span>
                     </span>
                     <Image
                       src="/AyuMarg Healthcare Logo.png"
