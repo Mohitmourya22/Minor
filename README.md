@@ -1,14 +1,14 @@
 # AayuMarg — "We care"
 
-AayuMarg is a calm digital space for families to manage a care profile, health vitals, medical records and OPD healthcare bookings. Patients book and pay by UPI; the doctor gets an email and manages every booking from a private **Doctor Panel**.
+AayuMarg is a calm digital space for families to manage a care profile, health vitals, medical records and OPD healthcare bookings. Patients book and pay online with **Razorpay** (UPI, cards, netbanking, wallets); the doctor gets an email and manages every booking from a private **Doctor Panel**.
 
 ## Features
 - **Care profile** — name, age, gender, phone, emergency contact (name + number), state / city / pincode / address (India), with strict validation on the browser *and* the server.
 - **Vitals Vault** — BP, heart rate, SpO₂, temperature, sugar, weight, with realistic-range checks.
 - **Medical records** — private file storage per user.
 - **Healthcare booking** — OPD categories, WhatsApp number collected before payment, booking only from **2 hours ahead** (IST), reason limited to 150 words and sanitised.
-- **Manual UPI payment** — patient pays by QR, submits the UTR; the doctor confirms from the email link or the Doctor Panel.
-- **Doctor Panel (`/doctor`)** — all bookings, patient details, WhatsApp chat link, one-click payment confirmation. Doctors only.
+- **Razorpay payments** — server-side order, signature + payment-status verification, webhook safety net; booking confirms automatically.
+- **Doctor Panel (`/doctor`)** — all bookings, patient details, WhatsApp chat link, Razorpay payment IDs. Doctors only.
 - **Family care** — switch between family members.
 
 ## Tech stack
@@ -32,7 +32,8 @@ Full list with comments in `.env.example`. Add the same names on Vercel (Project
 | `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY`, `CLERK_SECRET_KEY` | Clerk login |
 | `NEXT_PUBLIC_USE_MOCKS` | `true` = demo mode (browser storage). `false` = real backend (**required for the Doctor Panel**) |
 | `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` | Database + file storage (server only, never `NEXT_PUBLIC_`) |
-| `CONFIRM_SECRET`, `APP_URL` | Sign the "Confirm payment" link in the doctor's email; your site address |
+| `RAZORPAY_KEY_ID`, `RAZORPAY_KEY_SECRET`, `RAZORPAY_WEBHOOK_SECRET` | Razorpay (test keys `rzp_test_…` first, live `rzp_live_…` later). Secrets are server only |
+| `APP_URL` | Your site address |
 | `GMAIL_USER`, `GMAIL_APP_PASSWORD`, `NOTIFY_EMAIL_TO` | Booking / payment emails to the doctor |
 
 ## Database setup (Supabase → SQL Editor)
@@ -41,6 +42,8 @@ Run once, in this order (all are safe to re-run):
 2. `supabase/migration_upi.sql` — UPI payment columns
 3. `supabase/migration_whatsapp.sql` — patient WhatsApp number on bookings
 4. `supabase/migration_profile.sql` — emergency contact name/number, state, city, pincode on profiles
+5. `supabase/migration_prescriptions.sql` — prescriptions table
+6. `supabase/migration_razorpay.sql` — unique payment id + row-level security on every table
 
 ## Doctor Panel setup
 1. The doctor signs up / logs in to the website once.
@@ -53,9 +56,10 @@ Run once, in this order (all are safe to re-run):
 Access is enforced on the server (`lib/server/doctor.ts`): every `/api/doctor/*` call checks the Clerk role and returns 403 to everyone else. Hiding the menu link is only cosmetic.
 
 ## Booking & payment flow
-1. Patient fills the OPD form (WhatsApp number required) → booking saved as **Awaiting payment**; the doctor is emailed the patient's WhatsApp number.
-2. Patient pays via UPI QR and submits the 12-digit UTR → **Payment submitted**; the patient sees *"A healthcare person will be in touch soon"* with the contact number (opens WhatsApp).
-3. Doctor checks GPay, then presses **Confirm** (email link or Doctor Panel) → **Confirmed**.
+1. Patient fills the OPD form (WhatsApp number required) → booking saved as **Awaiting payment** (the server sets the fee).
+2. `POST /api/payments/order` creates a Razorpay order → Razorpay Checkout opens → patient pays.
+3. `POST /api/payments/verify` re-checks the signature, asks Razorpay for the payment (right order, INR, captured, right amount) → booking becomes **Confirmed** and the doctor is emailed.
+4. Safety net: Razorpay's webhook (`payment.captured`) confirms the booking even if the patient closes the tab after paying.
 
 Mental / Sexual Health bookings are shown as "Confidential consultation" in emails; the reason is visible only inside the login-protected Doctor Panel.
 

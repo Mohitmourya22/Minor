@@ -25,3 +25,6 @@ create index if not exists prescriptions_patient_email_idx
 create index if not exists prescriptions_doctor_id_idx
   on public.prescriptions (doctor_id, created_at desc);
 
+
+-- Security: row-level security ON with no policies = only our server (service-role key) can read/write.
+alter table public.prescriptions enable row level security;

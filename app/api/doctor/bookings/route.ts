@@ -36,7 +36,7 @@ export const GET = route(async () => {
       city: [p?.city, p?.state].filter(Boolean).join(", "),
       whatsapp: r.whatsapp || "", profilePhone: p?.phone || "",
       amount: (r.amount_paise ?? 0) / 100,
-      paymentStatus: r.payment_status, status: r.status, utr: r.utr ?? "",
+      paymentStatus: r.payment_status, status: r.status, utr: r.utr ?? "", paymentId: r.razorpay_payment_id ?? "",
       confidential: r.category === "mental-health" || r.category === "sexual-health",
     };
   });

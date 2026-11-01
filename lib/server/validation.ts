@@ -73,14 +73,9 @@ export const bookingSchema = z.object({
 });
 
 export const verifyPaymentSchema = z.object({
-  razorpay_order_id: z.string().min(1).max(100),
-  razorpay_payment_id: z.string().min(1).max(100),
-  razorpay_signature: z.string().min(1).max(200),
-});
-
-export const submitPaymentSchema = z.object({
-  bookingId: z.string().uuid(),
-  utr: z.string().trim().regex(/^\d{12}$/, "UTR must be 12 digits"),
+  razorpay_order_id: z.string().regex(/^order_[A-Za-z0-9]+$/).max(60),
+  razorpay_payment_id: z.string().regex(/^pay_[A-Za-z0-9]+$/).max(60),
+  razorpay_signature: z.string().regex(/^[a-f0-9]{64}$/),
 });
 
 export const createOrderSchema = z.object({ bookingId: z.string().uuid() });

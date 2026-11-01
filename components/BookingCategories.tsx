@@ -7,7 +7,7 @@ import type { CareCategory } from "@/lib/categories";
 import { useFamily } from "@/lib/family/FamilyContext";
 import { uploadDocuments } from "@/lib/services/documents.service";
 import { getFees } from "@/lib/services/pricing.service";
-import UpiPayPanel from "@/components/UpiPayPanel";
+import RazorpayPayPanel from "@/components/RazorpayPayPanel";
 import ContactSoon from "@/components/ContactSoon";
 import { checkReason, checkSlot, checkWhatsapp, cleanWhatsapp, earliestSlot, formatEarliest, todayIst, MAX_REASON_WORDS } from "@/lib/validation/booking";
 import { wordCount } from "@/lib/validation/common";
@@ -72,7 +72,7 @@ function OpdModal({
   const [fileError, setFileError] = useState<string | null>(null);
   const [done, setDone] = useState(false);
   const [payBooking, setPayBooking] = useState<Booking | null>(null);
-  const [awaitingDoctor, setAwaitingDoctor] = useState(false);
+  const [paidOnline, setPaidOnline] = useState(false);
   const [localError, setLocalError] = useState<string | null>(null);
   const [fee, setFee] = useState<number | null>(null); // rupees; null = free / unknown / mock mode
   const dialogRef = useRef<HTMLDivElement>(null);
@@ -144,83 +144,84 @@ function OpdModal({
           <button type="button" className="modal-close" onClick={onClose} aria-label="Close"><X size={18} /></button>
         </div>
 
-        {payBooking ? (
-          <UpiPayPanel booking={payBooking} onSubmitted={() => { setPayBooking(null); setAwaitingDoctor(true); setDone(true); onBooked?.(); }} />
-        ) : done ? (
-          <div className="modal-done">
-            <b>{awaitingDoctor ? `Payment submitted for ${active.name}.` : `Booking confirmed for ${active.name}.`}</b>
-            <p className="muted">
-              {awaitingDoctor ? "The doctor will confirm your booking once the payment is seen." : category.confidential ? "It appears as a confidential consultation on your dashboard." : `${category.service} on ${date} at ${time}.`}
-            </p>
-            {awaitingDoctor && <ContactSoon />}
-            <button className="btn btn-primary" style={{ marginTop: 14 }} onClick={onClose}>Done</button>
-          </div>
-        ) : (
-          <form className="form" onSubmit={submit}>
-            <p className="muted" style={{ margin: 0 }}>Booking for <b>{active.name}</b>. Change the family member from the top bar.</p>
-            <div className="row">
-              <div className="field">
-                <label htmlFor="o-date">Date</label>
-                <input id="o-date" type="date" required value={date} min={todayIst()} onChange={(e) => setDate(e.target.value)} />
+        <div className="modal-content">
+          {payBooking ? (
+            <RazorpayPayPanel booking={payBooking} onPaid={() => { setPayBooking(null); setPaidOnline(true); setDone(true); onBooked?.(); }} />
+          ) : done ? (
+            <div className="modal-done">
+              <b>{paidOnline ? `Payment received. Booking confirmed for ${active.name}.` : `Booking confirmed for ${active.name}.`}</b>
+              <p className="muted">
+                {paidOnline ? `${category.service} on ${date} at ${time}.` : category.confidential ? "It appears as a confidential consultation on your dashboard." : `${category.service} on ${date} at ${time}.`}
+              </p>
+              {paidOnline && <ContactSoon />}
+              <button className="btn btn-primary" style={{ marginTop: 14 }} onClick={onClose}>Done</button>
+            </div>
+          ) : (
+            <form className="form" onSubmit={submit}>
+              <p className="muted" style={{ margin: 0 }}>Booking for <b>{active.name}</b>. Change the family member from the top bar.</p>
+              <div className="row">
+                <div className="field">
+                  <label htmlFor="o-date">Date</label>
+                  <input id="o-date" type="date" required value={date} min={todayIst()} onChange={(e) => setDate(e.target.value)} />
+                </div>
+                <div className="field">
+                  <label htmlFor="o-time">Time</label>
+                  <input id="o-time" type="time" required value={time} onChange={(e) => setTime(e.target.value)} />
+                </div>
               </div>
               <div className="field">
-                <label htmlFor="o-time">Time</label>
-                <input id="o-time" type="time" required value={time} onChange={(e) => setTime(e.target.value)} />
+                <label htmlFor="o-whatsapp">Your WhatsApp number</label>
+                <input id="o-whatsapp" type="tel" inputMode="numeric" required autoComplete="tel" placeholder="10-digit mobile number" maxLength={14}
+                  value={whatsapp} onChange={(e) => setWhatsapp(e.target.value.replace(/[^\d+ ]/g, ""))} />
+                {whatsapp && checkWhatsapp(whatsapp) && <small role="alert" style={{ color: "var(--error, #b3261e)" }}>{checkWhatsapp(whatsapp)}</small>}
+                <small className="muted">Shared only with the doctor, to contact you about this booking.</small>
               </div>
-            </div>
-            <div className="field">
-              <label htmlFor="o-whatsapp">Your WhatsApp number</label>
-              <input id="o-whatsapp" type="tel" inputMode="numeric" required autoComplete="tel" placeholder="10-digit mobile number" maxLength={14}
-                value={whatsapp} onChange={(e) => setWhatsapp(e.target.value.replace(/[^\d+ ]/g, ""))} />
-              {whatsapp && checkWhatsapp(whatsapp) && <small role="alert" style={{ color: "var(--error, #b3261e)" }}>{checkWhatsapp(whatsapp)}</small>}
-              <small className="muted">Shared only with the doctor, to contact you about this booking.</small>
-            </div>
-            <div className="field">
-              <label htmlFor="o-reason">What would you like help with?</label>
-              <textarea id="o-reason" value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Optional — a short note for the doctor" maxLength={1500} />
-              <small className="muted" style={wordCount(reason) > MAX_REASON_WORDS ? { color: "var(--error, #b3261e)" } : undefined}>
-                {wordCount(reason)} / {MAX_REASON_WORDS} words{checkReason(reason) ? ` — ${checkReason(reason)}` : ""}
-              </small>
-            </div>
-
-            <div className="field">
-              <label>Reports or photos (optional)</label>
-              <div className="upload-actions">
-                <label className="btn btn-secondary upload-btn">
-                  <FileUp size={15} /> Upload files
-                  <input type="file" multiple accept=".pdf,image/jpeg,image/png,image/webp" hidden
-                    onChange={(e) => { addFiles(e.target.files); e.target.value = ""; }} />
-                </label>
-                <label className="btn btn-secondary upload-btn">
-                  <Camera size={15} /> Take photo
-                  <input type="file" accept="image/*" capture="environment" hidden
-                    onChange={(e) => { addFiles(e.target.files); e.target.value = ""; }} />
-                </label>
+              <div className="field">
+                <label htmlFor="o-reason">What would you like help with?</label>
+                <textarea id="o-reason" value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Optional — a short note for the doctor" maxLength={1500} />
+                <small className="muted" style={wordCount(reason) > MAX_REASON_WORDS ? { color: "var(--error, #b3261e)" } : undefined}>
+                  {wordCount(reason)} / {MAX_REASON_WORDS} words{checkReason(reason) ? ` — ${checkReason(reason)}` : ""}
+                </small>
               </div>
-              {fileError && <div className="muted" role="alert" style={{ color: "var(--error)" }}>{fileError}</div>}
-              {files.length > 0 && (
-                <ul className="file-chips">
-                  {files.map((f, i) => (
-                    <li key={`${f.name}-${i}`}>
-                      <span>{f.name}</span>
-                      <button type="button" aria-label={`Remove ${f.name}`} onClick={() => setFiles(files.filter((_, j) => j !== i))}><X size={13} /></button>
-                    </li>
-                  ))}
-                </ul>
-              )}
-              <small className="muted">PDF, JPG, PNG or WebP · up to 4 MB each · max 6 files</small>
-            </div>
+              <div className="field">
+                <label>Reports or photos (optional)</label>
+                <div className="upload-actions">
+                  <label className="btn btn-secondary upload-btn">
+                    <FileUp size={15} /> Upload files
+                    <input type="file" multiple accept=".pdf,image/jpeg,image/png,image/webp" hidden
+                      onChange={(e) => { addFiles(e.target.files); e.target.value = ""; }} />
+                  </label>
+                  <label className="btn btn-secondary upload-btn">
+                    <Camera size={15} /> Take photo
+                    <input type="file" accept="image/*" capture="environment" hidden
+                      onChange={(e) => { addFiles(e.target.files); e.target.value = ""; }} />
+                  </label>
+                </div>
+                {fileError && <div className="muted" role="alert" style={{ color: "var(--error)" }}>{fileError}</div>}
+                {files.length > 0 && (
+                  <ul className="file-chips">
+                    {files.map((f, i) => (
+                      <li key={`${f.name}-${i}`}>
+                        <span>{f.name}</span>
+                        <button type="button" aria-label={`Remove ${f.name}`} onClick={() => setFiles(files.filter((_, j) => j !== i))}><X size={13} /></button>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+                <small className="muted">PDF, JPG, PNG or WebP · up to 4 MB each · max 6 files</small>
+              </div>
 
-            <small className="muted">Earliest available slot: {formatEarliest()} (IST). Bookings need at least 2 hours' notice.</small>
-            {err && <div className="error-state" role="alert">{err}</div>}
-            {fee ? (
-              <small className="muted">Consultation fee ₹{fee}. You pay by UPI on the next step.</small>
-            ) : null}
-            <button className="btn btn-primary" type="submit" disabled={saving}>
-              {saving ? "Please wait…" : fee ? `Continue to pay ₹${fee}` : "Confirm booking"}
-            </button>
-          </form>
-        )}
+              <small className="muted">Earliest available slot: {formatEarliest()} (IST). Bookings need at least 2 hours' notice.</small>
+              {err && <div className="error-state" role="alert">{err}</div>}
+              {fee ? (
+                <small className="muted">Consultation fee ₹{fee}. You pay securely online on the next step.</small>
+              ) : null}
+              <button className="btn btn-primary" type="submit" disabled={saving}>
+                {saving ? "Please wait…" : fee ? `Continue to pay ₹${fee}` : "Confirm booking"}
+              </button>
+            </form>
+          )}
+        </div>
       </div>
     </div>
   );

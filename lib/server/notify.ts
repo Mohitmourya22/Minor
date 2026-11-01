@@ -2,7 +2,6 @@ import "server-only";
 import { db } from "./supabase";
 import type { BookingRow } from "./mappers";
 import { sendMail } from "./email";
-import { confirmUrl } from "./confirmToken";
 
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
@@ -55,22 +54,21 @@ export async function notifyDoctor(bookingId: string): Promise<void> {
 
 /**
  * Email the doctor about a booking (Gmail). Never throws.
- *  - UPI booking: payment_status "submitted" -> email has the UTR + a "Confirm payment" link
- *  - free / already paid booking: plain "new booking" email
+ * Called only after a booking is paid through Razorpay (or is free), so the email says "paid".
  * Privacy: the patient's reason is left out for mental / sexual health, like the WhatsApp message.
  */
 export async function notifyDoctorEmail(bookingId: string): Promise<void> {
   const supabase = db();
   try {
     const { data } = await supabase.from("bookings").select("*").eq("id", bookingId).maybeSingle();
-    const b = data as (BookingRow & { utr?: string | null }) | null;
+    const b = data as BookingRow | null;
     if (!b || b.doctor_notified_at) return;
+    if (b.payment_status !== "paid") return; // never announce a booking that is not paid
 
     const { data: profile } = await supabase.from("profiles").select("phone").eq("user_id", b.user_id).maybeSingle();
     const confidential = CONFIDENTIAL.has(b.category);
-    const submitted = b.payment_status === "submitted";
     const lines: (string | null)[] = [
-      submitted ? "Payment submitted - please check your GPay and confirm." : "New booking.",
+      b.amount_paise > 0 ? "New booking - PAID online (Razorpay)." : "New booking (free consultation).",
       "",
       `Ref: ${b.ref}`,
       `Service: ${confidential ? "Confidential consultation" : b.service}`,
@@ -79,15 +77,10 @@ export async function notifyDoctorEmail(bookingId: string): Promise<void> {
       `Patient WhatsApp: ${b.whatsapp || "not provided"}`,
       `Profile phone: ${(profile?.phone as string | undefined) || "not provided"}`,
       `Amount: ${rupees(b.amount_paise)}`,
-      submitted ? `UTR entered by patient: ${b.utr}` : null,
+      b.razorpay_payment_id ? `Razorpay payment ID: ${b.razorpay_payment_id}` : null,
       !confidential && b.reason ? `Note: ${b.reason.slice(0, 200)}` : null,
     ];
-    if (submitted) {
-      lines.push("", `1) Open GPay and look for ${rupees(b.amount_paise)} with UTR ${b.utr}.`,
-        "2) If it matches, open this link and press Confirm:", confirmUrl(b.id),
-        "If it does NOT match, do nothing - the booking stays unconfirmed.");
-    }
-    await sendMail(`${submitted ? "Payment to verify" : "New booking"} - ${b.ref}`, lines.filter((l): l is string => l !== null).join("\n"));
+    await sendMail(`New paid booking - ${b.ref}`, lines.filter((l): l is string => l !== null).join("\n"));
 
     await supabase.from("bookings").update({ doctor_notified_at: new Date().toISOString(), notify_error: null }).eq("id", b.id);
   } catch (e) {

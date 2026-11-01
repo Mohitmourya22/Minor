@@ -9,7 +9,7 @@ import { CalendarDays, CheckCircle2 } from 'lucide-react'
 import { Suspense, useEffect, useState } from 'react'
 import { useSearchParams } from 'next/navigation'
 import BookingCategories from '../../components/BookingCategories'
-import UpiPayPanel from '../../components/UpiPayPanel'
+import RazorpayPayPanel from '../../components/RazorpayPayPanel'
 import { useFamily } from '../../lib/family/FamilyContext'
 import { bookingLabel } from '../../lib/categories'
 import ContactSoon from '../../components/ContactSoon'
@@ -140,7 +140,7 @@ function BookingPage() {
                     </div>
                     {booking.paymentStatus === 'unpaid' && (showPay ? (
                       <div style={{ marginTop: 14 }}>
-                        <UpiPayPanel booking={booking} onSubmitted={() => { setShowPay(false); reload() }} />
+                        <RazorpayPayPanel booking={booking} onPaid={() => { setShowPay(false); setSaved(true); reload() }} />
                       </div>
                     ) : (
                       <button className="btn btn-primary" style={{ marginTop: 14 }} onClick={() => setShowPay(true)}>
@@ -149,7 +149,7 @@ function BookingPage() {
                     ))}
                     {booking.paymentStatus === 'submitted' && (
                       <>
-                        <div className="muted" style={{ marginTop: 10 }}>We have your payment details. The doctor will confirm shortly.</div>
+                        <div className="muted" style={{ marginTop: 10 }}>This was an older UPI payment. The doctor will confirm it shortly.</div>
                         <ContactSoon />
                       </>
                     )}

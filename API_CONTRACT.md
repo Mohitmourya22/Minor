@@ -22,7 +22,7 @@ Bodies are JSON unless noted. Types: `lib/types.ts`.
 | Latest booking | GET | `/bookings/latest` | Yes | — | `Booking` (404 if none) | REAL |
 | Create booking | POST | `/bookings` | Yes | `Booking` | `Booking` (with `id`, `ref`, `amount`, `paymentStatus`; status `Awaiting payment`) | REAL |
 | Create payment order | POST | `/payments/order` | Yes | `{ bookingId }` | `{ orderId, amount (paise), currency, keyId, bookingRef }` | REAL |
-| Verify payment | POST | `/payments/verify` | Yes | `{ razorpay_order_id, razorpay_payment_id, razorpay_signature }` | confirmed `Booking` (doctor gets WhatsApp) | REAL |
+| Verify payment | POST | `/payments/verify` | Yes | `{ razorpay_order_id, razorpay_payment_id, razorpay_signature }` | confirmed `Booking` (doctor gets an email) | REAL |
 | Razorpay webhook | POST | `/webhooks/razorpay` | Signature | Razorpay event | `{ ok: true }` | REAL |
 | Fees per category | GET | `/pricing` | No | — | `{ [category]: rupees }` | REAL |
 | AI chat | POST | `/ai/chat` | Yes | `{ messages: {role, content}[] }` | `{ reply: string }` | FUTURE |

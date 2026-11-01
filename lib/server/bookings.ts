@@ -115,36 +115,16 @@ export async function confirmPayment(opts: {
   return { row: { ...current, payment_status: "paid", status: "Confirmed" }, firstTime: false };
 }
 
-/** Patient says "I paid" and gives the 12-digit UTR. The booking waits for the doctor to confirm. */
-export async function submitUpiPayment(userId: string, bookingId: string, utr: string): Promise<BookingRow> {
-  const supabase = db();
-  const { data: found, error } = await supabase.from("bookings").select("*").eq("id", bookingId).eq("user_id", userId).maybeSingle();
-  if (error) dbError("utr lookup", error);
-  if (!found) throw new HttpError(404, "NOT_FOUND", "Booking not found.");
-  const current = found as BookingRow;
-  if (current.payment_status === "paid") throw new HttpError(409, "CONFLICT", "This booking is already paid.");
-  if (current.amount_paise <= 0) throw new HttpError(409, "CONFLICT", "This booking needs no payment.");
-
-  const { data: updated, error: uErr } = await supabase.from("bookings")
-    .update({
-      utr, payment_status: "submitted", status: "Payment submitted",
-      payment_submitted_at: new Date().toISOString(),
-      doctor_notified_at: null, // a corrected UTR triggers a fresh email
-    })
-    .eq("id", current.id).neq("payment_status", "paid").select().single();
-  if (uErr) {
-    if ((uErr as { code?: string }).code === "23505") throw new HttpError(409, "CONFLICT", "This UTR was already used for another booking.");
-    dbError("utr update", uErr);
-  }
-  return updated as BookingRow;
-}
-
-/** Doctor confirms (via the email link) that the money arrived. Safe to run twice. */
+/**
+ * LEGACY (old UPI-QR bookings only): the doctor confirms that the money arrived.
+ * Only rows already in "submitted" can be flipped, so a doctor account can never mark an
+ * unpaid Razorpay booking as paid by hand. Safe to run twice.
+ */
 export async function confirmManualPayment(bookingId: string): Promise<BookingRow | null> {
   const supabase = db();
   const { data, error } = await supabase.from("bookings")
     .update({ payment_status: "paid", status: "Confirmed", paid_at: new Date().toISOString() })
-    .eq("id", bookingId).neq("payment_status", "paid").select();
+    .eq("id", bookingId).eq("payment_status", "submitted").select();
   if (error) dbError("manual confirm", error);
   if (data && data.length === 1) return data[0] as BookingRow;
   const { data: existing } = await supabase.from("bookings").select("*").eq("id", bookingId).maybeSingle();

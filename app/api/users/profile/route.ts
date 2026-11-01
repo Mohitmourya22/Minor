@@ -1,4 +1,5 @@
 import { requireUserId } from "@/lib/server/auth";
+import { rateLimit } from "@/lib/server/rateLimit";
 import { db } from "@/lib/server/supabase";
 import { HttpError, json, notFound, route } from "@/lib/server/http";
 import { parseBody, profileSchema } from "@/lib/server/validation";
@@ -14,6 +15,7 @@ export const GET = route(async () => {
 
 export const PUT = route(async (req) => {
   const userId = await requireUserId();
+  await rateLimit("profile-save", userId, 30, 600);
   const p = await parseBody(req, profileSchema);
 
   const { data, error } = await db().from("profiles").upsert({

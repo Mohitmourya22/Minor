@@ -15,7 +15,7 @@ import { useMemo, useState } from 'react'
 const load = () => apiRequest<DoctorBooking[]>(API_ENDPOINTS.doctor.bookings)
 
 type Tab = 'action' | 'unpaid' | 'confirmed' | 'all'
-const TABS: [Tab, string][] = [['action', 'Needs action'], ['unpaid', 'Unpaid'], ['confirmed', 'Confirmed'], ['all', 'All']]
+const TABS: [Tab, string][] = [['action', 'Old UPI to verify'], ['unpaid', 'Unpaid'], ['confirmed', 'Paid'], ['all', 'All']]
 
 const waLink = (n: string) => {
   const d = n.replace(/\D/g, '')
@@ -24,11 +24,11 @@ const waLink = (n: string) => {
 }
 const when = (iso: string) => new Date(iso).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', dateStyle: 'medium', timeStyle: 'short' })
 const label = (b: DoctorBooking) =>
-  b.paymentStatus === 'paid' ? 'Confirmed' : b.paymentStatus === 'submitted' ? 'Payment to verify' : 'Unpaid'
+  b.paymentStatus === 'paid' ? 'Paid' : b.paymentStatus === 'submitted' ? 'Old UPI - verify' : 'Unpaid'
 
 export default function Page() {
   const { data, status, error, reload } = useResource<DoctorBooking[]>(load, [])
-  const [tab, setTab] = useState<Tab>('action')
+  const [tab, setTab] = useState<Tab>('confirmed')
   const [q, setQ] = useState('')
   const [busy, setBusy] = useState<string | null>(null)
   const [msg, setMsg] = useState<string | null>(null)
@@ -50,13 +50,13 @@ export default function Page() {
       if (tab === 'unpaid' && b.paymentStatus !== 'unpaid') return false
       if (tab === 'confirmed' && b.paymentStatus !== 'paid') return false
       if (!t) return true
-      return [b.ref, b.patientName, b.accountName, b.whatsapp, b.profilePhone, b.utr].some(v => v.toLowerCase().includes(t))
+      return [b.ref, b.patientName, b.accountName, b.whatsapp, b.profilePhone, b.utr, b.paymentId].some(v => v.toLowerCase().includes(t))
     })
   }, [data, tab, q])
 
   async function confirm(b: DoctorBooking) {
     const ok = window.confirm(
-      `Confirm ONLY if you have seen ₹${b.amount} (UTR ${b.utr || 'n/a'}) in your GPay.\n\nConfirm payment for ${b.ref}?`)
+      `This is an OLD UPI-QR booking. Confirm ONLY if you have seen ₹${b.amount} (UTR ${b.utr || 'n/a'}) in your GPay.\n\nConfirm payment for ${b.ref}?`)
     if (!ok) return
     setBusy(b.id); setActionErr(null); setMsg(null)
     try {
@@ -74,7 +74,7 @@ export default function Page() {
       <main className="main">
         <div className="eyebrow">Doctor panel</div>
         <h1 className="h1">Bookings &amp; patients</h1>
-        <p className="sub">All patient bookings in one place. Confirm a payment only after you have seen it in your GPay.</p>
+        <p className="sub">All patient bookings in one place. New bookings are paid online through Razorpay and confirm automatically.</p>
 
         {ENV.USE_MOCKS && (
           <div className="error-state" role="alert" style={{ marginTop: 16 }}>
@@ -103,7 +103,7 @@ export default function Page() {
 
             <div className="field" style={{ marginTop: 14, maxWidth: 420 }}>
               <label htmlFor="d-search"><Search size={14} style={{ verticalAlign: '-2px' }} /> Search</label>
-              <input id="d-search" value={q} maxLength={60} placeholder="Name, ref (AM-…), phone or UTR" onChange={e => setQ(e.target.value)} />
+              <input id="d-search" value={q} maxLength={60} placeholder="Name, ref (AM-…), phone or payment ID" onChange={e => setQ(e.target.value)} />
             </div>
 
             {actionErr && <div className="error-state" role="alert" style={{ marginTop: 14 }}>{actionErr}</div>}
@@ -132,7 +132,7 @@ export default function Page() {
                       Ref: <b>{b.ref}</b> · Booked {when(b.createdAt)}<br />
                       Service: {b.confidential ? 'Confidential consultation' : b.service}<br />
                       Slot: <b>{b.date} at {b.time}</b><br />
-                      Fee: ₹{b.amount}{b.utr ? <> · UTR: <b>{b.utr}</b></> : null}<br />
+                      Fee: ₹{b.amount}{b.paymentId ? <> · Razorpay ID: <b style={{ overflowWrap: 'anywhere' }}>{b.paymentId}</b></> : null}{b.utr ? <> · UTR: <b>{b.utr}</b></> : null}<br />
                       WhatsApp: <b>{b.whatsapp || 'not provided'}</b>
                       {b.profilePhone && <> · Profile phone: {b.profilePhone}</>}
                       {b.reason && <><br />Reason: {b.reason}</>}
@@ -153,7 +153,7 @@ export default function Page() {
                       )}
                       {b.paymentStatus === 'submitted' && (
                         <button className="btn btn-primary" disabled={busy === b.id} onClick={() => confirm(b)}>
-                          <CheckCircle2 size={15} /> {busy === b.id ? 'Confirming…' : 'Confirm payment received'}
+                          <CheckCircle2 size={15} /> {busy === b.id ? 'Confirming…' : 'Confirm old UPI payment'}
                         </button>
                       )}
                     </div>

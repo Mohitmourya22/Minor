@@ -13,7 +13,7 @@ interface RazorpayOptions {
   key: string; order_id: string; amount: number; currency: string;
   name: string; description: string; theme: { color: string };
   handler: (r: CheckoutResult) => void;
-  modal: { ondismiss: () => void };
+  modal: { ondismiss: () => void; confirm_close?: boolean; escape?: boolean };
 }
 declare global {
   interface Window { Razorpay?: new (o: RazorpayOptions) => RazorpayInstance }
@@ -50,7 +50,7 @@ export async function openCheckout(o: {
       name: "AayuMarg", description: o.description, theme: { color: "#7a1f2b" },
       handler: (r) => resolve(r),
       // Failed attempts are retried inside Razorpay's own window; we only react to "closed".
-      modal: { ondismiss: () => reject(new PaymentDismissedError()) },
+      modal: { ondismiss: () => reject(new PaymentDismissedError()), confirm_close: true, escape: false },
     }).open();
   });
 }

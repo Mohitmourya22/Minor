@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { requireUserId } from "@/lib/server/auth";
+import { rateLimit } from "@/lib/server/rateLimit";
 import { DOCS_BUCKET, db } from "@/lib/server/supabase";
 import { HttpError, badRequest, json, route } from "@/lib/server/http";
 import { ALLOWED_TYPES, MAX_UPLOAD_BYTES, matchesMagicBytes, safeFileName } from "@/lib/server/files";
@@ -21,6 +22,7 @@ export const GET = route(async () => {
 /** multipart/form-data, field "file" (PDF / JPG / PNG / WebP, max 4 MB). */
 export const POST = route(async (req) => {
   const userId = await requireUserId();
+  await rateLimit("doc-upload", userId, 20, 600);
 
   let form: FormData;
   try { form = await req.formData(); } catch { throw badRequest("Expected a file upload."); }

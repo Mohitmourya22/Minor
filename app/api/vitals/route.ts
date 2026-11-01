@@ -1,4 +1,5 @@
 import { requireUserId } from "@/lib/server/auth";
+import { rateLimit } from "@/lib/server/rateLimit";
 import { db } from "@/lib/server/supabase";
 import { HttpError, json, route } from "@/lib/server/http";
 import { parseBody, vitalSchema } from "@/lib/server/validation";
@@ -20,6 +21,7 @@ export const GET = route(async () => {
 
 export const POST = route(async (req) => {
   const userId = await requireUserId();
+  await rateLimit("vitals-add", userId, 30, 600);
   const v = await parseBody(req, vitalSchema);
   const { data, error } = await db().from("vitals").insert({ user_id: userId, ...v }).select().single();
   if (error) throw fail("vitals insert", error);

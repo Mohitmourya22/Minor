@@ -1,4 +1,5 @@
 import { requireUserId } from "@/lib/server/auth";
+import { rateLimit } from "@/lib/server/rateLimit";
 import { db } from "@/lib/server/supabase";
 import { HttpError, conflict, json, notFound, route } from "@/lib/server/http";
 import { createOrderSchema, parseBody } from "@/lib/server/validation";
@@ -9,6 +10,7 @@ import type { BookingRow } from "@/lib/server/mappers";
 /** Step 2 of booking: create (or reuse) a Razorpay order for the caller's own unpaid booking. */
 export const POST = route(async (req) => {
   const userId = await requireUserId();
+  await rateLimit("pay-order", userId, 10, 600);
   const { bookingId } = await parseBody(req, createOrderSchema);
   const supabase = db();
 
@@ -31,11 +33,19 @@ export const POST = route(async (req) => {
       receipt: b.ref,
       notes: { bookingId: b.id, ref: b.ref },
     });
-    orderId = order.id;
-    const { error: uErr } = await supabase.from("bookings").update({ razorpay_order_id: orderId }).eq("id", b.id);
+    // Only the first of two simultaneous clicks may store its order; the other one re-reads the winner.
+    const { data: saved, error: uErr } = await supabase.from("bookings")
+      .update({ razorpay_order_id: order.id }).eq("id", b.id).is("razorpay_order_id", null).select("razorpay_order_id");
     if (uErr) {
       console.error("[db] save order id:", uErr.message);
       throw new HttpError(500, "SERVER_ERROR", "Something went wrong.");
+    }
+    if (saved && saved.length === 1) {
+      orderId = order.id;
+    } else {
+      const { data: again } = await supabase.from("bookings").select("razorpay_order_id").eq("id", b.id).maybeSingle();
+      orderId = (again as { razorpay_order_id: string | null } | null)?.razorpay_order_id ?? null;
+      if (!orderId) throw new HttpError(500, "SERVER_ERROR", "Something went wrong.");
     }
   }
 

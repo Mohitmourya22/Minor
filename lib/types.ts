@@ -30,7 +30,7 @@ export interface Booking {
   attachments?: string[];
   /** Set by the backend: short booking code (e.g. AM-7K3Q9X). */
   ref?: string;
-  /** Set by the backend. "unpaid" until the patient submits a UTR, "submitted" until the doctor confirms. */
+  /** Set by the backend. "unpaid" until Razorpay confirms the payment; "paid" after. ("submitted" only exists on old UPI-QR bookings.) */
   paymentStatus?: "unpaid" | "submitted" | "paid";
   /** Consultation fee in rupees (set by the backend). */
   amount?: number;
@@ -43,7 +43,7 @@ export interface DoctorBooking {
   reason: string; attachments: string[];
   patientName: string; accountName: string; age: string; gender: string; city: string;
   whatsapp: string; profilePhone: string;
-  amount: number; paymentStatus: "unpaid" | "submitted" | "paid"; status: string; utr: string;
+  amount: number; paymentStatus: "unpaid" | "submitted" | "paid"; status: string; utr: string; paymentId: string;
   confidential: boolean;
 }
 

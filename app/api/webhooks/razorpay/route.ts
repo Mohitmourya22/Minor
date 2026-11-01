@@ -26,7 +26,7 @@ export const POST = route(async (req) => {
   try { evt = JSON.parse(raw) as WebhookPayload; } catch { throw new HttpError(400, "BAD_REQUEST", "Invalid body."); }
 
   const pay = evt.payload?.payment?.entity;
-  if (evt.event === "payment.captured" && pay?.order_id && pay.id) {
+  if (evt.event === "payment.captured" && pay?.status === "captured" && pay.order_id && pay.id) {
     const result = await confirmPayment({ orderId: pay.order_id, paymentId: pay.id, paidAmountPaise: pay.amount });
     if (result?.firstTime) after(() => notifyDoctor(result.row.id));
   }
